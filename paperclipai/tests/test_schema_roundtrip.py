@@ -11,6 +11,8 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 SCHEMAS_DIR = REPO_ROOT / "schemas"
 FIXTURES_DIR = SCHEMAS_DIR / "fixtures"
 
+# (schema_file, good_fixture, bad_fixture)
+# tool_output@v3.3 has two shape-variants; each gets its own good+bad pair.
 SCHEMA_CASES = [
     ("intent@v3.2.json", "intent_good.json", "intent_bad.json"),
     ("workflow_plan@v3.2.json", "workflow_plan_good.json", "workflow_plan_bad.json"),
@@ -19,7 +21,18 @@ SCHEMA_CASES = [
         "execution_instruction_good.json",
         "execution_instruction_bad.json",
     ),
-    ("tool_output@v3.2.json", "tool_output_good.json", "tool_output_bad.json"),
+    # success variant: data required
+    (
+        "tool_output@v3.3.json",
+        "tool_output_success_good.json",
+        "tool_output_success_bad.json",
+    ),
+    # failure variant: error required
+    (
+        "tool_output@v3.3.json",
+        "tool_output_failure_good.json",
+        "tool_output_failure_bad.json",
+    ),
 ]
 
 
@@ -40,8 +53,9 @@ def test_good_fixture_validates(schema_file: str, good_fixture: str, _bad: str) 
     fixture = _load_json(FIXTURES_DIR / good_fixture)
     validator = _make_validator(schema)
     errors = list(validator.iter_errors(fixture))
-    assert errors == [], f"Good fixture {good_fixture!r} failed validation:\n" + "\n".join(
-        str(e) for e in errors
+    assert errors == [], (
+        f"Good fixture {good_fixture!r} failed validation:\n"
+        + "\n".join(str(e) for e in errors)
     )
 
 
