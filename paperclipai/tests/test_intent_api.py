@@ -72,8 +72,6 @@ async def db_engine(db_url: str):
 @pytest_asyncio.fixture(scope="module")
 async def client(db_engine) -> AsyncGenerator[httpx.AsyncClient, None]:
     """FastAPI test client with DB dependency overridden to use the testcontainer."""
-    from fastapi.testclient import TestClient
-
     from app.db.session import get_db
     from app.main import app
 
@@ -85,12 +83,16 @@ async def client(db_engine) -> AsyncGenerator[httpx.AsyncClient, None]:
 
     app.dependency_overrides[get_db] = _override_get_db
 
+    # Phase 1 tests hit paperclipai directly (no api-gateway); bypass claims check.
+    os.environ["BYPASS_CLAIMS_CHECK"] = "1"
+
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as ac:
         yield ac
 
     app.dependency_overrides.clear()
+    os.environ.pop("BYPASS_CLAIMS_CHECK", None)
 
 
 # ---------------------------------------------------------------------------

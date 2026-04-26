@@ -35,15 +35,25 @@ def _accepted_response(intent_id: str) -> JSONResponse:
 
 @router.post("/intent")
 async def create_intent(
+    request: Request,
     body: IntentModel,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> JSONResponse:
     intent_id = str(body.intent_id)
 
+    # X-Caller-Type from the gateway is authoritative; body must match (set by middleware).
+    header_caller_type = getattr(request.state, "caller_type", None) or body.caller_type.value
+    if header_caller_type != body.caller_type.value:
+        raise HTTPException(
+            status_code=400,
+            detail=f"caller_type mismatch: header '{header_caller_type}' != body '{body.caller_type.value}'",
+        )
+    caller_type = header_caller_type
+
     # De-dup: return existing intent if (caller_type, idempotency_key) already seen.
     existing = await db.scalar(
         select(Intent).where(
-            Intent.caller_type == body.caller_type.value,
+            Intent.caller_type == caller_type,
             Intent.idempotency_key == body.idempotency_key,
         )
     )
@@ -52,7 +62,7 @@ async def create_intent(
 
     row = Intent(
         id=intent_id,
-        caller_type=body.caller_type.value,
+        caller_type=caller_type,
         idempotency_key=body.idempotency_key,
         source=body.source,
         trigger_type=body.trigger_type.value,
@@ -69,11 +79,9 @@ async def create_intent(
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        # Lost a race on the unique constraint — fetch and return existing.
-        await db.refresh(row) if False else None  # keep type checker happy
         existing = await db.scalar(
             select(Intent).where(
-                Intent.caller_type == body.caller_type.value,
+                Intent.caller_type == caller_type,
                 Intent.idempotency_key == body.idempotency_key,
             )
         )
