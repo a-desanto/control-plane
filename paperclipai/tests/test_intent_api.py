@@ -207,7 +207,7 @@ async def test_persisted_row_matches_submitted_payload(
     assert stored_constraints["max_cost_usd"] == payload["constraints"]["max_cost_usd"]
 
 
-async def test_sse_emits_accepted_and_closes(
+async def test_sse_emits_accepted_immediately(
     client: httpx.AsyncClient,
 ) -> None:
     payload = {**_VALID_INTENT, "idempotency_key": "sse-check-005", "intent_id": "01HXTEST000000000000000008"}
@@ -216,7 +216,7 @@ async def test_sse_emits_accepted_and_closes(
     assert r.status_code == 202
     intent_id = r.json()["intent_id"]
 
-    # consume the SSE stream
+    # consume the SSE stream — disconnect after seeing 'accepted'
     events = []
     async with client.stream("GET", f"/intent/{intent_id}/events") as resp:
         assert resp.status_code == 200
@@ -224,8 +224,8 @@ async def test_sse_emits_accepted_and_closes(
         async for line in resp.aiter_lines():
             if line.startswith("event:"):
                 events.append(line.split(":", 1)[1].strip())
-            if line.startswith("data:"):
-                pass  # consumed
+                if events[-1] == "accepted":
+                    break  # disconnect; no worker running so stream stays open otherwise
 
     assert "accepted" in events, f"expected 'accepted' event, got: {events}"
 

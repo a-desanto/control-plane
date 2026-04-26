@@ -1,21 +1,26 @@
+import asyncio
+import json
 import os
 from typing import Annotated, AsyncGenerator
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
+from app import events as ev
 from app.contracts.intent import Model as IntentModel
 from app.db.models import Contract, Intent
-from app.db.session import get_db
+from app.db.session import AsyncSessionLocal, get_db
 
 router = APIRouter()
 
 _BASE_URL = os.environ.get("BASE_URL", "http://localhost:8000")
+
+_TERMINAL = {"completed", "failed"}
 
 
 def _intent_urls(intent_id: str) -> dict:
@@ -41,7 +46,6 @@ async def create_intent(
 ) -> JSONResponse:
     intent_id = str(body.intent_id)
 
-    # X-Caller-Type from the gateway is authoritative; body must match (set by middleware).
     header_caller_type = getattr(request.state, "caller_type", None) or body.caller_type.value
     if header_caller_type != body.caller_type.value:
         raise HTTPException(
@@ -50,7 +54,6 @@ async def create_intent(
         )
     caller_type = header_caller_type
 
-    # De-dup: return existing intent if (caller_type, idempotency_key) already seen.
     existing = await db.scalar(
         select(Intent).where(
             Intent.caller_type == caller_type,
@@ -76,6 +79,13 @@ async def create_intent(
     )
     db.add(row)
     try:
+        # Flush to DB then NOTIFY in the same transaction so the worker only
+        # sees the intent after the row is committed.
+        await db.flush()
+        await db.execute(
+            text("SELECT pg_notify('paperclipai_intent_ready', :payload)"),
+            {"payload": intent_id},
+        )
         await db.commit()
     except IntegrityError:
         await db.rollback()
@@ -145,7 +155,90 @@ async def get_intent_events(
     if intent is None:
         raise HTTPException(status_code=404, detail="intent not found")
 
+    # Subscribe to the fan-out queue BEFORE checking current state to avoid
+    # a race where the worker NOTIFYs between our DB read and queue subscribe.
+    queue = ev.subscribe(intent_id)
+
     async def _stream() -> AsyncGenerator[dict, None]:
-        yield {"event": "accepted", "data": f'{{"intent_id": "{intent_id}", "status": "accepted"}}'}
+        try:
+            # Always emit "accepted" immediately as a liveness signal.
+            yield {
+                "event": "accepted",
+                "data": json.dumps({"intent_id": intent_id, "status": "accepted"}),
+            }
+
+            # If intent is already terminal, synthesize events from DB and close.
+            try:
+                async with AsyncSessionLocal() as stream_db:
+                    fresh_intent = await stream_db.get(Intent, intent_id)
+                    if fresh_intent and fresh_intent.status in _TERMINAL:
+                        # Emit synthetic events for completed contracts.
+                        contracts = await stream_db.scalars(
+                            select(Contract)
+                            .where(Contract.intent_id == intent_id)
+                            .order_by(Contract.created_at)
+                        )
+                        for c in contracts.all():
+                            yield {
+                                "event": "contract_started",
+                                "data": json.dumps(
+                                    {"intent_id": intent_id, "contract_id": c.id}
+                                ),
+                            }
+                            yield {
+                                "event": "contract_completed",
+                                "data": json.dumps(
+                                    {
+                                        "intent_id": intent_id,
+                                        "contract_id": c.id,
+                                        "status": c.status,
+                                    }
+                                ),
+                            }
+                        yield {
+                            "event": fresh_intent.status,
+                            "data": json.dumps(
+                                {"intent_id": intent_id, "status": fresh_intent.status}
+                            ),
+                        }
+                        return
+            except Exception:
+                return  # DB unavailable; yield "accepted" was already sent above
+
+            # Wait for live notifications from the worker.
+            while True:
+                if await request.is_disconnected():
+                    return
+                try:
+                    event_data = await asyncio.wait_for(queue.get(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    # Heartbeat + re-check terminal state
+                    try:
+                        async with AsyncSessionLocal() as check_db:
+                            check_intent = await check_db.get(Intent, intent_id)
+                            if check_intent and check_intent.status in _TERMINAL:
+                                yield {
+                                    "event": check_intent.status,
+                                    "data": json.dumps(
+                                        {
+                                            "intent_id": intent_id,
+                                            "status": check_intent.status,
+                                        }
+                                    ),
+                                }
+                                return
+                    except Exception:
+                        return
+                    continue
+
+                event_name = event_data.get("event", "update")
+                yield {
+                    "event": event_name,
+                    "data": json.dumps(event_data),
+                }
+                if event_name in _TERMINAL:
+                    return
+        finally:
+            ev.unsubscribe(intent_id, queue)
 
     return EventSourceResponse(_stream())

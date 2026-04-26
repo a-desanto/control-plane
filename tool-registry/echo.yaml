@@ -1,0 +1,12 @@
+- tool_name: echo
+  tool_version: "1.0.0"
+  mcp:
+    transport: stdio
+    command: ["docker", "run", "--rm", "-i", "sha256:PLACEHOLDER"]
+    tool_call: "echo"
+  input_schema: echo_input@v1
+  output_schema: tool_output@v3.3
+  declared_side_effects: []
+  risk_level: low
+  requires_capabilities: []
+  notes: "Echo tool for Phase 2B end-to-end testing. Replace sha256:PLACEHOLDER with the image digest after building."
