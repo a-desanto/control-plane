@@ -1,0 +1,111 @@
+{
+  "name": "test_post_intent",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a1b2c3d4-0001-0000-0000-000000000001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR_API_GATEWAY_BASE_URL/intent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "YOUR_API_KEY_HERE"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={\n  \"intent_id\": \"01HXTEST000000000000000001\",\n  \"source\": \"n8n:workflow_test:exec_0001\",\n  \"caller_type\": \"n8n\",\n  \"trigger_type\": \"webhook\",\n  \"requested_outcome\": \"qualify_and_respond\",\n  \"target\": \"lead_test_001\",\n  \"payload\": {\n    \"email\": \"test@example.com\",\n    \"name\": \"Test Lead\"\n  },\n  \"constraints\": {\n    \"environment\": \"staging\",\n    \"max_cost_usd\": 1.0\n  },\n  \"idempotency_key\": \"n8n-test-workflow-{{ $now.toISO() }}\",\n  \"callback_url\": \"https://YOUR_N8N_BASE_URL/webhook/intent-result\"\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "a1b2c3d4-0002-0000-0000-000000000002",
+      "name": "POST /intent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "fields": {
+          "values": [
+            {
+              "name": "intent_id",
+              "stringValue": "={{ $json.intent_id }}"
+            },
+            {
+              "name": "status",
+              "stringValue": "={{ $json.status }}"
+            },
+            {
+              "name": "status_url",
+              "stringValue": "={{ $json.status_url }}"
+            },
+            {
+              "name": "events_url",
+              "stringValue": "={{ $json.events_url }}"
+            },
+            {
+              "name": "audit_link",
+              "stringValue": "={{ $json.audit_link }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0003-0000-0000-000000000003",
+      "name": "Log 202 Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [680, 300]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "POST /intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST /intent": {
+      "main": [
+        [
+          {
+            "node": "Log 202 Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
