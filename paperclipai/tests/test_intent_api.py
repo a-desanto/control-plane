@@ -37,7 +37,8 @@ def _docker_available() -> bool:
 def db_url() -> str:
     env_url = os.environ.get("DATABASE_URL")
     if env_url:
-        return env_url
+        yield env_url
+        return
 
     if not _docker_available():
         pytest.skip("Docker not available and DATABASE_URL not set")

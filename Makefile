@@ -10,6 +10,7 @@ CODEGEN_OPTS := \
   --output-model-type pydantic_v2.BaseModel \
   --use-schema-description \
   --target-python-version 3.12 \
+  --disable-timestamp \
   --formatters ruff-format ruff-check
 
 .PHONY: codegen codegen-check test
