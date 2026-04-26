@@ -1,0 +1,17 @@
+{
+  "intent_id": "01HXABC123DEF456GHJ789KLM0",
+  "source": "n8n:workflow_42:exec_9876",
+  "caller_type": "n8n",
+  "trigger_type": "webhook",
+  "requested_outcome": "qualify_and_respond",
+  "target": "lead_abc",
+  "payload": { "email": "jane@example.com", "subject": "Inquiry" },
+  "constraints": {
+    "read_only": false,
+    "environment": "prod",
+    "max_cost_usd": 2.00
+  },
+  "idempotency_key": "gmail_msg_xyz",
+  "callback_url": "https://n8n.example.com/webhook/paperclip-result/exec_33",
+  "correlation_id": "corr-001"
+}

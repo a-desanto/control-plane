@@ -1,0 +1,36 @@
+{
+  "$id": "https://schemas.paperclipai/intent@v3.2",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "intent_id",
+    "source",
+    "caller_type",
+    "trigger_type",
+    "requested_outcome",
+    "payload",
+    "constraints",
+    "idempotency_key"
+  ],
+  "properties": {
+    "intent_id":         { "type": "string", "format": "ulid" },
+    "source":            { "type": "string", "description": "Free-form origin tag, e.g. 'n8n:workflow_42:exec_9876' or 'app:customer_portal:session_abc'" },
+    "caller_type":       { "type": "string", "enum": ["n8n", "client_app"], "description": "[v3.2] Distinguishes the two caller classes for policy and audit." },
+    "trigger_type":      { "type": "string", "enum": ["webhook", "cron", "integration", "manual", "user_action"] },
+    "requested_outcome": { "type": "string", "description": "Names the workflow contract to resolve, e.g. 'qualify_and_respond'" },
+    "target":            { "type": "string", "description": "Subject of the intent (lead_id, document_id, etc.)" },
+    "payload":           { "type": "object", "description": "Trigger-specific normalized data. Caller is responsible for normalization." },
+    "constraints": {
+      "type": "object",
+      "properties": {
+        "read_only":     { "type": "boolean", "default": false },
+        "environment":   { "type": "string", "enum": ["prod", "staging", "dev"] },
+        "max_cost_usd":  { "type": "number", "minimum": 0 }
+      }
+    },
+    "idempotency_key":   { "type": "string", "description": "Required. paperclipai de-dupes on (caller_type, idempotency_key)." },
+    "callback_url":      { "type": "string", "format": "uri", "description": "[v3.2] Optional. n8n always sets it; client apps may omit and use SSE/polling instead." },
+    "correlation_id":    { "type": "string" }
+  },
+  "additionalProperties": false
+}

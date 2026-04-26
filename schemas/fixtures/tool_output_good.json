@@ -1,0 +1,17 @@
+{
+  "contract_id": "01HXABC123DEF456GHJ789KLM2",
+  "status": "success",
+  "schema_ref": "lead_intent_output@v1",
+  "data": { "intent": "buying_signal", "urgency": "high", "confidence": 0.87 },
+  "metrics": {
+    "duration_ms": 1200,
+    "cost_usd": 0.004,
+    "model_used": "claude-haiku-4-5",
+    "model_version": "20251001",
+    "input_tokens": 512,
+    "output_tokens": 64,
+    "upstream_latency_ms": 980
+  },
+  "side_effects_observed": [],
+  "completed_at": "2026-04-26T12:00:01Z"
+}

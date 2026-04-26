@@ -1,0 +1,10 @@
+{
+  "intent_id": "01HXABC123DEF456GHJ789KLM0",
+  "source": "n8n:workflow_42:exec_9876",
+  "caller_type": "unknown_caller",
+  "trigger_type": "webhook",
+  "requested_outcome": "qualify_and_respond",
+  "payload": {},
+  "constraints": {},
+  "idempotency_key": "gmail_msg_xyz"
+}

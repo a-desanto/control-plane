@@ -1,0 +1,12 @@
+- tool_name: noop_tool
+  tool_version: "0.1.0"
+  mcp:
+    transport: stdio
+    command: ["echo", "noop"]
+    tool_call: "noop"
+  input_schema: noop_input@v1
+  output_schema: noop_output@v1
+  declared_side_effects: []
+  risk_level: low
+  requires_capabilities: []
+  notes: "Stub entry so the registry loader has something to read on boot."

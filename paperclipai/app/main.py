@@ -1,11 +1,22 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import uuid
 import logging
 
+from app.tool_registry import load_tool_registry
+
 logging.basicConfig(level=logging.INFO)
 
-app = FastAPI(title="paperclipai", version="v0")
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    load_tool_registry()
+    yield
+
+
+app = FastAPI(title="paperclipai", version="v0", lifespan=lifespan)
+
 
 @app.post("/intent")
 async def create_intent(request: Request):
@@ -21,6 +32,7 @@ async def create_intent(request: Request):
             "status": "accepted",
         },
     )
+
 
 @app.get("/health")
 async def health():

@@ -1,0 +1,22 @@
+{
+  "contract_id": "01HXABC123DEF456GHJ789KLM2",
+  "intent_id": "01HXABC123DEF456GHJ789KLM0",
+  "plan_id": "01HXABC123DEF456GHJ789KLM1",
+  "step_id": "classify",
+  "tool_name": "classify_lead_intent",
+  "tool_version": "1.0.0",
+  "tool_implementation": {
+    "protocol": "grpc",
+    "transport": "stdio"
+  },
+  "execution_mode": "parallel",
+  "input_schema_ref": "lead_intent_input@v1",
+  "output_schema_ref": "lead_intent_output@v1",
+  "input": {},
+  "cost_budget": {
+    "class": "standard",
+    "ceiling_usd": -1.00
+  },
+  "policy_decisions": [],
+  "observability": {}
+}

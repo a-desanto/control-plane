@@ -1,0 +1,93 @@
+{
+  "$id": "https://schemas.paperclipai/execution_instruction@v3.2",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "contract_id",
+    "intent_id",
+    "plan_id",
+    "step_id",
+    "tool_name",
+    "tool_version",
+    "tool_implementation",
+    "execution_mode",
+    "input_schema_ref",
+    "output_schema_ref",
+    "input",
+    "cost_budget",
+    "policy_decisions",
+    "observability"
+  ],
+  "properties": {
+    "contract_id":        { "type": "string", "format": "ulid" },
+    "parent_contract_id": { "type": ["string", "null"], "format": "ulid", "description": "[v3.2] Causation chain. Null only for the first contract in an intent." },
+    "intent_id":          { "type": "string", "format": "ulid" },
+    "plan_id":            { "type": "string", "format": "ulid" },
+    "workflow_id":        { "type": "string" },
+    "workflow_version":   { "type": "string" },
+    "step_id":            { "type": "string" },
+    "tool_name":          { "type": "string" },
+    "tool_version":       { "type": "string" },
+    "tool_implementation": {
+      "type": "object",
+      "description": "[v3.2] Always 'mcp' in v3.1+. Transport details snapshotted from the registry at resolution time.",
+      "required": ["protocol", "transport"],
+      "properties": {
+        "protocol":   { "type": "string", "const": "mcp" },
+        "transport":  { "type": "string", "enum": ["stdio", "http"] },
+        "endpoint":   { "type": "string", "description": "URL for http transport, command-array digest for stdio" },
+        "image_digest": { "type": "string", "description": "Container digest pinning for replay" }
+      }
+    },
+    "agent_role":         { "type": "string" },
+    "model_class":        { "type": "string" },
+    "execution_mode":     { "type": "string", "enum": ["deterministic", "probabilistic", "hybrid"] },
+    "input_schema_ref":   { "type": "string" },
+    "output_schema_ref":  { "type": "string" },
+    "input":              { "type": "object", "description": "Validated against input_schema_ref before invocation" },
+    "required_capabilities": { "type": "array", "items": { "type": "string" } },
+    "declared_side_effects": { "type": "array", "items": { "type": "string" } },
+    "cost_budget": {
+      "type": "object",
+      "required": ["class", "ceiling_usd"],
+      "properties": {
+        "class":       { "type": "string" },
+        "ceiling_usd": { "type": "number", "minimum": 0 }
+      }
+    },
+    "policy_decisions": {
+      "type": "array",
+      "description": "Snapshot of every policy check that approved this contract.",
+      "items": {
+        "type": "object",
+        "required": ["policy", "decision", "evaluated_at"],
+        "properties": {
+          "policy":       { "type": "string" },
+          "decision":     { "type": "string", "enum": ["allow", "deny", "advisory"] },
+          "reason":       { "type": "string" },
+          "evaluated_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "observability": {
+      "type": "object",
+      "required": ["trace_id"],
+      "properties": {
+        "trace_id":  { "type": "string" },
+        "span_id":   { "type": "string" },
+        "langfuse_session_id": { "type": "string" }
+      }
+    },
+    "caller_context": {
+      "type": "object",
+      "description": "[v3.2] Echo of the caller_type and original source for tool-level audit.",
+      "properties": {
+        "caller_type": { "type": "string", "enum": ["n8n", "client_app"] },
+        "source":      { "type": "string" }
+      }
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "signed_by":  { "type": "string" }
+  },
+  "additionalProperties": false
+}
