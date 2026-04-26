@@ -1,7 +1,7 @@
 SCHEMAS := schemas/intent@v3.2.json \
            schemas/workflow_plan@v3.2.json \
            schemas/execution_instruction@v3.2.json \
-           schemas/tool_output@v3.2.json
+           schemas/tool_output@v3.3.json
 
 CONTRACTS_DIR := paperclipai/app/contracts
 
@@ -29,7 +29,7 @@ codegen:
 	  --output app/contracts/execution_instruction.py \
 	  $(CODEGEN_OPTS) && \
 	uv run datamodel-codegen \
-	  --input ../schemas/tool_output@v3.2.json \
+	  --input ../schemas/tool_output@v3.3.json \
 	  --output app/contracts/tool_output.py \
 	  $(CODEGEN_OPTS)
 
