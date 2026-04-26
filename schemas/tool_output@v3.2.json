@@ -1,0 +1,57 @@
+{
+  "$id": "https://schemas.paperclipai/tool_output@v3.2",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["contract_id", "status", "schema_ref", "completed_at"],
+  "properties": {
+    "contract_id": { "type": "string", "format": "ulid" },
+    "status":      { "type": "string", "enum": ["success", "failure"] },
+    "schema_ref":  { "type": "string", "description": "Echoes the contract's output_schema_ref for replay validation" },
+    "data":        { "type": "object", "description": "Structured output. Required when status=success. Validated against schema_ref." },
+    "error": {
+      "type": "object",
+      "description": "Required when status=failure. Layered for the Failure Classifier.",
+      "required": ["code", "message"],
+      "properties": {
+        "code":      { "type": "string", "description": "Structured error code (layer 1 of Failure Classifier). Examples: QUOTA_EXCEEDED, SCHEMA_VIOLATION, UPSTREAM_TIMEOUT, AUTH_FAILED." },
+        "message":   { "type": "string" },
+        "category":  { "type": "string", "enum": ["transient", "permanent", "policy", "schema", "upstream"], "description": "[v3.2] Hint for adaptation strategy." },
+        "retriable": { "type": "boolean" },
+        "details":   { "type": "object" }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "description": "[v3.2] Tool-emitted execution metrics. Write-only into observability — never re-enters decisions except through Policy Evaluation.",
+      "properties": {
+        "duration_ms":         { "type": "integer", "minimum": 0 },
+        "cost_usd":            { "type": "number", "minimum": 0 },
+        "model_used":          { "type": "string", "description": "Concrete model name. Distinct from contract.model_class." },
+        "model_version":       { "type": "string" },
+        "input_tokens":        { "type": "integer" },
+        "output_tokens":       { "type": "integer" },
+        "upstream_latency_ms": { "type": "integer" }
+      }
+    },
+    "side_effects_observed": {
+      "type": "array",
+      "description": "[v3.2] Side effects the tool actually performed. Must be a subset of contract.declared_side_effects — paperclipai rejects outputs that exceed declarations.",
+      "items": { "type": "string" }
+    },
+    "transcript": {
+      "type": "object",
+      "description": "Probabilistic-mode tools must include enough to reconstruct the LLM call.",
+      "properties": {
+        "messages":           { "type": "array" },
+        "system_prompt_hash": { "type": "string" },
+        "stop_reason":        { "type": "string" }
+      }
+    },
+    "completed_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    { "if": { "properties": { "status": { "const": "success" } } }, "then": { "required": ["data"] } },
+    { "if": { "properties": { "status": { "const": "failure" } } }, "then": { "required": ["error"] } }
+  ]
+}

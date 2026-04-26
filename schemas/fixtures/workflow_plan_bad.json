@@ -1,0 +1,7 @@
+{
+  "plan_id": "01HXABC123DEF456GHJ789KLM1",
+  "intent_id": "01HXABC123DEF456GHJ789KLM0",
+  "workflow_id": "lead_qualification",
+  "workflow_version": "1.3.0",
+  "steps": []
+}

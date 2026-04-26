@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  codegen-check:
+    name: Codegen output is not dirty
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dev dependencies
+        working-directory: paperclipai
+        run: uv sync --frozen
+
+      - name: Run codegen
+        run: make codegen
+
+      - name: Fail if contracts/ is dirty
+        run: |
+          git diff --exit-code paperclipai/app/contracts/
+          if [ $? -ne 0 ]; then
+            echo "::error::paperclipai/app/contracts/ has uncommitted changes after running make codegen."
+            echo "Run 'make codegen' locally and commit the output."
+            exit 1
+          fi
+
+  test:
+    name: pytest
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: paperclipai_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        working-directory: paperclipai
+        run: uv sync --frozen
+
+      - name: Run tests
+        working-directory: paperclipai
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/paperclipai_test
+        run: uv run pytest tests/ -v
+
+  docker-health:
+    name: Docker build + /health check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        working-directory: paperclipai
+        run: docker build -t paperclipai:ci .
+
+      - name: Start container
+        run: |
+          docker run -d --name paperclipai_ci -p 8000:8000 paperclipai:ci
+          sleep 5
+
+      - name: Check /health
+        run: |
+          status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health)
+          echo "HTTP status: $status"
+          [ "$status" = "200" ]
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f paperclipai_ci

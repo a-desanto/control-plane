@@ -1,0 +1,65 @@
+{
+  "$id": "https://schemas.paperclipai/workflow_plan@v3.2",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["plan_id", "intent_id", "workflow_id", "workflow_version", "steps"],
+  "properties": {
+    "plan_id":           { "type": "string", "format": "ulid" },
+    "intent_id":         { "type": "string", "format": "ulid" },
+    "workflow_id":       { "type": "string", "description": "e.g. 'lead_qualification'" },
+    "workflow_version":  { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "agent_role":        { "type": "string", "description": "Which agent role from the registry is responsible for this plan" },
+    "policy_snapshot": {
+      "type": "object",
+      "description": "[v3.2] Frozen result of Policy Evaluation Stage at planning time.",
+      "required": ["capabilities_granted", "budget_class", "kill_switch", "circuit_state"],
+      "properties": {
+        "capabilities_granted": { "type": "array", "items": { "type": "string" } },
+        "budget_class":         { "type": "string" },
+        "budget_remaining_usd": { "type": "number" },
+        "kill_switch":          { "type": "string", "enum": ["off", "advisory", "halt"] },
+        "circuit_state":        { "type": "string", "enum": ["closed", "half_open", "open"] }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["step_id", "tool_name", "tool_version", "execution_mode", "input_schema_ref", "output_schema_ref"],
+        "properties": {
+          "step_id":           { "type": "string" },
+          "tool_name":         { "type": "string" },
+          "tool_version":      { "type": "string" },
+          "model_class":       { "type": "string", "description": "Required when tool is an LLM MCP server" },
+          "execution_mode":    { "type": "string", "enum": ["deterministic", "probabilistic", "hybrid"] },
+          "input_schema_ref":  { "type": "string" },
+          "output_schema_ref": { "type": "string" },
+          "depends_on":        { "type": "array", "items": { "type": "string" } },
+          "approval_gate":     { "type": "boolean", "default": false, "description": "If true, this step emits awaiting_approval before executing" },
+          "fallback_strategy": {
+            "type": "object",
+            "properties": {
+              "max_retries":      { "type": "integer", "minimum": 0, "maximum": 3 },
+              "fallback_tool":    { "type": "string" },
+              "degrade_to_class": { "type": "string" }
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "termination_guard": {
+      "type": "object",
+      "description": "[v3.2] Plan-scoped limits the Adaptive Engine cannot violate.",
+      "properties": {
+        "max_chain_depth":    { "type": "integer", "default": 5 },
+        "max_total_cost_usd": { "type": "number" },
+        "monotone_cost_on_degrade": { "type": "boolean", "default": true }
+      }
+    },
+    "created_at":        { "type": "string", "format": "date-time" },
+    "signed_by":         { "type": "string", "description": "paperclipai instance + version that produced this plan" }
+  },
+  "additionalProperties": false
+}
