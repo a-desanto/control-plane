@@ -756,32 +756,77 @@ Per-step contract sent to an MCP server. This is the on-the-wire artifact the MC
 
 What every MCP server returns. Persisted as the contract result, indexed for replay, and surfaced to the caller via callback / SSE / status.
 
+**Bumped to `@v3.3` from `@v3.2` during Phase 0 implementation.** The previous `allOf` / `if` / `then` formulation expressed the success-vs-failure constraint correctly in JSON Schema but was not translatable by `datamodel-code-generator` into Pydantic validators, leaving model-level enforcement absent. The discriminated-union form below is semantically equivalent and produces a `ToolOutput = ToolOutputSuccess | ToolOutputFailure` Pydantic union with a working discriminator on `status`. No callers were on `@v3.2` yet, so there is no migration cost.
+
 ```json
 {
-  "$id": "https://schemas.paperclipai/tool_output@v3.2",
+  "$id": "https://schemas.paperclipai/tool_output@v3.3",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "required": ["contract_id", "status", "schema_ref", "completed_at"],
-  "properties": {
-    "contract_id": { "type": "string", "format": "ulid" },
-    "status":      { "type": "string", "enum": ["success", "failure"] },
-    "schema_ref":  { "type": "string", "description": "Echoes the contract's output_schema_ref for replay validation" },
-    "data":        { "type": "object", "description": "Structured output. Required when status=success. Validated against schema_ref." },
-    "error": {
+  "title": "ToolOutput",
+  "description": "Structured output from any MCP server invocation.",
+  "discriminator": { "propertyName": "status" },
+  "oneOf": [
+    { "$ref": "#/$defs/ToolOutputSuccess" },
+    { "$ref": "#/$defs/ToolOutputFailure" }
+  ],
+  "$defs": {
+    "ToolOutputSuccess": {
       "type": "object",
-      "description": "Required when status=failure. Layered for the Failure Classifier.",
+      "title": "ToolOutputSuccess",
+      "required": ["contract_id", "status", "schema_ref", "data", "completed_at"],
+      "properties": {
+        "contract_id": { "type": "string", "format": "ulid" },
+        "status":      { "type": "string", "const": "success" },
+        "schema_ref":  { "type": "string", "description": "Echoes the contract's output_schema_ref for replay validation" },
+        "data":        { "type": "object", "description": "Structured output. Validated against schema_ref before persistence." },
+        "metrics":              { "$ref": "#/$defs/ToolMetrics" },
+        "side_effects_observed": {
+          "type": "array",
+          "description": "Side effects the tool actually performed. Must be a subset of contract.declared_side_effects.",
+          "items": { "type": "string" }
+        },
+        "transcript":   { "$ref": "#/$defs/ToolTranscript" },
+        "completed_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "ToolOutputFailure": {
+      "type": "object",
+      "title": "ToolOutputFailure",
+      "required": ["contract_id", "status", "schema_ref", "error", "completed_at"],
+      "properties": {
+        "contract_id": { "type": "string", "format": "ulid" },
+        "status":      { "type": "string", "const": "failure" },
+        "schema_ref":  { "type": "string" },
+        "error":       { "$ref": "#/$defs/ToolError" },
+        "metrics":     { "$ref": "#/$defs/ToolMetrics" },
+        "side_effects_observed": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "transcript":   { "$ref": "#/$defs/ToolTranscript" },
+        "completed_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "ToolError": {
+      "type": "object",
+      "title": "ToolError",
+      "description": "Layered for the Failure Classifier.",
       "required": ["code", "message"],
       "properties": {
         "code":      { "type": "string", "description": "Structured error code (layer 1 of Failure Classifier). Examples: QUOTA_EXCEEDED, SCHEMA_VIOLATION, UPSTREAM_TIMEOUT, AUTH_FAILED." },
         "message":   { "type": "string" },
-        "category":  { "type": "string", "enum": ["transient", "permanent", "policy", "schema", "upstream"], "description": "[v3.2] Hint for adaptation strategy." },
+        "category":  { "type": "string", "enum": ["transient", "permanent", "policy", "schema", "upstream"], "description": "Hint for adaptation strategy." },
         "retriable": { "type": "boolean" },
         "details":   { "type": "object" }
-      }
+      },
+      "additionalProperties": false
     },
-    "metrics": {
+    "ToolMetrics": {
       "type": "object",
-      "description": "[v3.2] Tool-emitted execution metrics. Write-only into observability — never re-enters decisions except through Policy Evaluation.",
+      "title": "ToolMetrics",
+      "description": "Tool-emitted execution metrics. Write-only into observability — never re-enters decisions except through Policy Evaluation.",
       "properties": {
         "duration_ms":         { "type": "integer", "minimum": 0 },
         "cost_usd":            { "type": "number", "minimum": 0 },
@@ -790,39 +835,34 @@ What every MCP server returns. Persisted as the contract result, indexed for rep
         "input_tokens":        { "type": "integer" },
         "output_tokens":       { "type": "integer" },
         "upstream_latency_ms": { "type": "integer" }
-      }
+      },
+      "additionalProperties": false
     },
-    "side_effects_observed": {
-      "type": "array",
-      "description": "[v3.2] Side effects the tool actually performed. Must be a subset of contract.declared_side_effects — paperclipai rejects outputs that exceed declarations.",
-      "items": { "type": "string" }
-    },
-    "transcript": {
+    "ToolTranscript": {
       "type": "object",
+      "title": "ToolTranscript",
       "description": "Probabilistic-mode tools must include enough to reconstruct the LLM call.",
       "properties": {
         "messages":           { "type": "array" },
         "system_prompt_hash": { "type": "string" },
         "stop_reason":        { "type": "string" }
-      }
-    },
-    "completed_at": { "type": "string", "format": "date-time" }
-  },
-  "additionalProperties": false,
-  "allOf": [
-    { "if": { "properties": { "status": { "const": "success" } } }, "then": { "required": ["data"] } },
-    { "if": { "properties": { "status": { "const": "failure" } } }, "then": { "required": ["error"] } }
-  ]
+      },
+      "additionalProperties": false
+    }
+  }
 }
 ```
 
 **Rules:**
 
+- `status` is the discriminator. Pydantic validation rejects `{status: "success"}` without `data` and `{status: "failure"}` without `error` at the model level — no runtime conditional needed.
 - `data` is validated against `schema_ref` before the contract result is persisted as success. A schema violation flips the status to `failure` with `error.code = "SCHEMA_VIOLATION"` — the tool's reported success is overridden.
-- `side_effects_observed` must be a subset of the contract's `declared_side_effects`. An undeclared side effect is a contract violation: the contract is recorded as `failure`, kill-switch evaluation runs, and audit flags it. This is the v3.2 enforcement of §2 invariant 10 (write-only observability).
+- `side_effects_observed` must be a subset of the contract's `declared_side_effects`. An undeclared side effect is a contract violation: the contract is recorded as `failure`, kill-switch evaluation runs, and audit flags it. This is the enforcement of §2 invariant 10 (write-only observability).
 - `error.code` is the entrypoint for layer 1 of the Failure Classifier (§9). Layer 2 (pattern match on `error.message` / `error.details`) and layer 3 (LLM fallback classifier) only run if `code` is missing or unrecognized.
 - `transcript` must be present for probabilistic-mode contracts so transcript replay (§15) can run without re-invoking the model. For deterministic contracts, it can be omitted.
 - Tool output is **the only data MCP servers produce.** They do not write to memory, do not emit logs into paperclipai's decision path, and do not call paperclipai back. The Tool Output schema is the entire contract surface from tool to control plane.
+
+**Codegen note:** authoring schemas as discriminated unions instead of conditional `allOf` / `if` / `then` is the v3.3+ convention for any schema with mutually-exclusive shape variants. `datamodel-code-generator` translates `oneOf` + `discriminator` into a Pydantic `Union[...]` with `Field(discriminator=...)`; conditional schemas are silently dropped.
 
 ## 7A.5 Schema lifecycle
 
