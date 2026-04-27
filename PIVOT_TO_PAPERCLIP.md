@@ -19,14 +19,16 @@ to paperclipai (Coolify application `fh3l092hvgk621zagxwg4non`).
 
 The container has been stopped. `traefik.enable=false` has been set on the Coolify app so
 that even a manual restart does not advertise the Traefik route. The Coolify app record and
-image are preserved; the code remains at `api-gateway/` in this repo.
+image are preserved.
 
 **Why decommissioned:** paperclipai handles its own auth via board API keys (`pcp_board_*`
 tokens, SHA-256 hashed in `board_api_keys` table). The HMAC claim-signing layer api-gateway
 provided is redundant now that callers authenticate directly to paperclipai.
 
-**To re-enable:** remove `traefik.enable=false` from the app's custom labels, update the
-fqdn in Coolify, and redeploy. Code at `api-gateway/` is intact.
+**Code deleted** in this repo (PR #5, commit 467c0c7 is the last state containing it). To
+re-deploy from git history: `git checkout 467c0c7 -- api-gateway/`, then deploy as a
+Coolify app pointing at that directory. Remove `traefik.enable=false` from the app's
+custom labels before deploying.
 
 ---
 

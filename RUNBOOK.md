@@ -33,12 +33,13 @@ paperclipai is directly public-facing. The `allowlist-internal-only` middleware 
 previous api-gateway architecture has been removed — paperclipai now accepts external traffic
 directly.
 
-### api-gateway (decommissioned 2026-04-27)
+### api-gateway (decommissioned 2026-04-27, code deleted)
 
 api-gateway env vars (`API_GATEWAY_DATABASE_URL`, `API_GATEWAY_REDIS_URL`,
 `API_GATEWAY_SIGNING_SECRET`, `PAPERCLIPAI_INTERNAL_URL`) are no longer used.
 The Coolify app `fh3l092hvgk621zagxwg4non` is stopped with `traefik.enable=false`.
-Code retained at `api-gateway/`. See `PIVOT_TO_PAPERCLIP.md` for re-enable instructions.
+Code deleted from working tree; last commit containing it: `467c0c7`.
+See `PIVOT_TO_PAPERCLIP.md` for re-enable instructions from git history.
 
 ---
 
@@ -77,7 +78,7 @@ In Coolify UI: select the service → Deployments → redeploy previous tag.
 ## §3 Auth mechanism
 
 **Design:** paperclip native board API key bearer tokens. api-gateway decommissioned
-2026-04-27; code retained at `api-gateway/` in case re-deployment is needed.
+2026-04-27, code deleted (last state: commit `467c0c7`).
 
 ### API key format
 
