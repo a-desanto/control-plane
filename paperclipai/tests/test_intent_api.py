@@ -299,3 +299,67 @@ async def test_status_404_for_unknown_intent(
 ) -> None:
     r = await client.get("/intent/01HXDOESNOTEXIST0000000000/status")
     assert r.status_code == 404
+
+
+async def test_status_returns_completed_after_worker_processes(
+    client: httpx.AsyncClient,
+    db_engine,
+    db_url: str,
+) -> None:
+    """E2E: POST intent → worker processes it → GET /status returns 200 with last_contract.
+
+    Regression guard for the production 500 caused by alembic migration
+    d7e2a1b3c4f5 not running (plans table + image_digest column missing).
+    The Contract ORM model maps image_digest; a missing column raises
+    UndefinedColumnError in the SELECT, which surfaces as a 500 on /status.
+    """
+    import sys
+    from pathlib import Path
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.orchestration import worker as w
+    from app.tool_registry import McpTransport, ToolRegistryEntry
+
+    echo_path = Path(__file__).parent.parent.parent / "mcp-servers" / "cli" / "echo-mcp" / "echo_mcp.py"
+    if not echo_path.exists():
+        pytest.skip("echo_mcp.py not found")
+
+    w._registry = [
+        ToolRegistryEntry(
+            tool_name="echo",
+            tool_version="1.0.0",
+            mcp=McpTransport(
+                transport="stdio",
+                command=[sys.executable, str(echo_path)],
+                tool_call="echo",
+            ),
+            input_schema="echo_input@v1",
+            output_schema="tool_output@v3.3",
+        )
+    ]
+
+    payload = {
+        **_VALID_INTENT,
+        "intent_id": "01HXTEST000000000000000010",
+        "idempotency_key": "e2e-status-worker-010",
+        "requested_outcome": "echo_test",
+        "payload": {"text": "hello"},
+    }
+    r = await client.post("/intent", json=payload)
+    assert r.status_code == 202
+    intent_id = r.json()["intent_id"]
+
+    sf = async_sessionmaker(db_engine, expire_on_commit=False)
+    asyncpg_url = db_url.replace("postgresql+asyncpg://", "postgresql://").replace(
+        "postgresql+psycopg2://", "postgresql://"
+    )
+    await w.process_intent(intent_id, sf, asyncpg_url)
+
+    r = await client.get(f"/intent/{intent_id}/status")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "completed"
+    assert body["last_contract"] is not None, "last_contract must be populated after worker completes"
+    assert body["last_contract"]["status"] == "completed"
+    assert body["last_contract"]["tool_name"] == "echo"

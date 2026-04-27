@@ -66,12 +66,33 @@ def postgres_url():
         yield url
 
 
+async def _column_names(database_url: str, table: str) -> set[str]:
+    import asyncpg
+
+    sync_url = database_url.replace("postgresql+asyncpg://", "postgresql://")
+    conn = await asyncpg.connect(sync_url)
+    rows = await conn.fetch(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = 'public' AND table_name = $1",
+        table,
+    )
+    await conn.close()
+    return {r["column_name"] for r in rows}
+
+
 @pytest.mark.asyncio
 async def test_upgrade_creates_tables(postgres_url: str) -> None:
     _run_alembic("upgrade head", postgres_url)
     tables = await _table_names(postgres_url)
+    # Phase 1 tables
     assert "intents" in tables, f"intents table missing; found: {tables}"
     assert "contracts" in tables, f"contracts table missing; found: {tables}"
+    # Phase 2B tables — previously unguarded, missing migration caused prod 500
+    assert "plans" in tables, f"plans table missing; found: {tables}"
+    assert "callback_attempts" in tables, f"callback_attempts table missing; found: {tables}"
+    # Phase 2B column added to contracts — missing column caused GET /status 500
+    contract_cols = await _column_names(postgres_url, "contracts")
+    assert "image_digest" in contract_cols, f"image_digest column missing on contracts; found: {contract_cols}"
 
 
 @pytest.mark.asyncio
@@ -80,3 +101,5 @@ async def test_downgrade_removes_tables(postgres_url: str) -> None:
     tables = await _table_names(postgres_url)
     assert "intents" not in tables, f"intents still present: {tables}"
     assert "contracts" not in tables, f"contracts still present: {tables}"
+    assert "plans" not in tables, f"plans still present: {tables}"
+    assert "callback_attempts" not in tables, f"callback_attempts still present: {tables}"

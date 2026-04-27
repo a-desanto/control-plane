@@ -21,4 +21,4 @@ RUN uv sync --frozen --no-dev
 
 EXPOSE 8000
 
-CMD ["uv", "run", "honcho", "start", "-f", "Procfile"]
+CMD ["sh", "-c", "uv run alembic upgrade head && uv run honcho start -f Procfile"]
