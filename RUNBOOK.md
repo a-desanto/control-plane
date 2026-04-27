@@ -6,32 +6,39 @@ Companion to `ARCHITECTURE.md` and `BUILD_BRIEF.md`. Covers deployment, env vars
 
 ## §1 Environment variables
 
-### api-gateway
-
-| Variable | Required | Default | Notes |
-|---|---|---|---|
-| `API_GATEWAY_DATABASE_URL` | Yes | — | `postgresql+asyncpg://user:pass@host:5432/api_gateway` |
-| `API_GATEWAY_REDIS_URL` | Yes | — | `redis://redis:6379/0` |
-| `API_GATEWAY_SIGNING_SECRET` | Yes | — | Shared HMAC secret with paperclipai. Min 32 chars, random. **Never commit.** |
-| `PAPERCLIPAI_INTERNAL_URL` | Yes | `http://paperclipai:8000` | Internal Docker network URL for paperclipai |
-
 ### paperclipai
 
 | Variable | Required | Default | Notes |
 |---|---|---|---|
-| `DATABASE_URL` | Yes | — | `postgresql+asyncpg://user:pass@host:5432/paperclipai` |
-| `API_GATEWAY_SIGNING_SECRET` | Yes | — | Must match the value set on api-gateway |
-| `BASE_URL` | Yes | `http://localhost:8000` | Public-facing URL; used to build `audit_link`, `events_url`, `status_url` in 202 responses |
-| `BYPASS_CLAIMS_CHECK` | Dev/test only | unset | Set to `1` to skip HMAC verification when running paperclipai without api-gateway (local dev, unit tests). **Never set in production.** |
+| `BETTER_AUTH_SECRET` | Yes | — | Secret for better-auth session signing. Min 32 chars, random. **Never commit.** |
+| `BETTER_AUTH_BASE_URL` | Yes | — | Public-facing URL, e.g. `https://paperclipai.cfpa.sekuirtek.com` |
+| `PAPERCLIP_DEPLOYMENT_MODE` | Yes | `authenticated` | `authenticated` for production. |
+| `PAPERCLIP_AUTH_MODE` | Yes | `public` | Controls sign-up openness. |
+| `PAPERCLIP_ALLOWED_HOSTNAMES` | Yes | — | Comma-separated allowed hostnames for CORS/auth. |
+| `ANTHROPIC_API_KEY` | Yes | — | API key for Claude. **Never commit.** |
+| `PAPERCLIP_REQUIRE_AGENT_APPROVAL` | No | `false` | Set `true` to require admin approval for new agents. |
+
+paperclipai uses an **embedded PostgreSQL** instance (port 54329 inside the container). No
+external `DATABASE_URL` is needed. The database is persisted via the container volume at
+`/paperclip/instances/default/`.
 
 ### Traefik (Coolify labels)
 
 | Label | Service | Value |
 |---|---|---|
-| `traefik.http.routers.api-gateway.rule` | api-gateway | `Host(\`{API_GATEWAY_HOSTNAME}\`)` |
-| `traefik.http.routers.paperclipai.middlewares` | paperclipai | `allowlist-internal-only` |
+| `traefik.enable=true` | paperclipai | Enables Traefik routing |
+| `traefik.http.routers.*.rule` | paperclipai | `Host(\`paperclipai.cfpa.sekuirtek.com\`)` |
 
-`allowlist-internal-only` is a Traefik middleware that restricts source IPs to the Docker internal network. This ensures paperclipai is unreachable from the public internet — all public traffic must enter through api-gateway.
+paperclipai is directly public-facing. The `allowlist-internal-only` middleware from the
+previous api-gateway architecture has been removed — paperclipai now accepts external traffic
+directly.
+
+### api-gateway (decommissioned 2026-04-27)
+
+api-gateway env vars (`API_GATEWAY_DATABASE_URL`, `API_GATEWAY_REDIS_URL`,
+`API_GATEWAY_SIGNING_SECRET`, `PAPERCLIPAI_INTERNAL_URL`) are no longer used.
+The Coolify app `fh3l092hvgk621zagxwg4non` is stopped with `traefik.enable=false`.
+Code retained at `api-gateway/`. See `PIVOT_TO_PAPERCLIP.md` for re-enable instructions.
 
 ---
 
@@ -40,39 +47,19 @@ Companion to `ARCHITECTURE.md` and `BUILD_BRIEF.md`. Covers deployment, env vars
 ### First deploy (new VPS)
 
 1. Provision VPS, add to Coolify as a server.
-2. Create two Postgres databases: `api_gateway` and `paperclipai`.
-3. Create a Redis instance (Coolify-managed).
-4. In Coolify, set all env vars from §1 for both services. Generate `API_GATEWAY_SIGNING_SECRET` with `openssl rand -hex 32`.
-5. Deploy api-gateway:
+2. In Coolify, create a paperclipai application from the `paperclipai/paperclip` GitHub repo.
+3. Set env vars from §1. Generate `BETTER_AUTH_SECRET` with `openssl rand -hex 32`.
+4. Deploy paperclipai:
    ```
-   git push → Coolify auto-deploy from control-plane/api-gateway/
+   git push → Coolify auto-deploy
    ```
-6. Deploy paperclipai:
-   ```
-   git push → Coolify auto-deploy from control-plane/paperclipai/
-   ```
-7. Run Alembic migrations for both services (Coolify release command or manual):
-   ```
-   # api-gateway
-   uv run alembic upgrade head
-
-   # paperclipai
-   uv run alembic upgrade head
-   ```
-8. Seed the first API key for n8n using the CLI:
-   ```
-   python -m app.cli create-key \
-     --app-id n8n-prod \
-     --caller-type n8n \
-     --capabilities qualify_and_respond \
-     --budget-pool default \
-     --rate 60
-   ```
-   Copy the displayed key into n8n's credential store immediately.
-9. Verify routing:
-   - `curl https://{API_GATEWAY_HOSTNAME}/health` → `{"status": "ok"}`
-   - `curl https://{PAPERCLIPAI_HOSTNAME}/health` → blocked (connection refused or 403)
-   - `curl https://{API_GATEWAY_HOSTNAME}/intent -H "Authorization: Bearer <key>" -d '...'` → 202
+   paperclipai bootstraps its own embedded PostgreSQL on first start. No manual migration needed.
+5. Create the first admin user by visiting `https://{PAPERCLIPAI_HOSTNAME}/` and completing the
+   bootstrap flow.
+6. Issue the first API key for n8n (see §3 Key management).
+7. Verify:
+   - `curl https://{PAPERCLIPAI_HOSTNAME}/api/health` → `{"status":"ok","bootstrapStatus":"ready",...}`
+   - `curl -H "Authorization: Bearer pcp_board_<token>" https://{PAPERCLIPAI_HOSTNAME}/api/health` → 200
 
 ### Redeployment (code change)
 
@@ -89,84 +76,68 @@ In Coolify UI: select the service → Deployments → redeploy previous tag.
 
 ## §3 Auth mechanism
 
-**Design:** API key bearer tokens with HMAC-signed claims forwarding.
+**Design:** paperclip native board API key bearer tokens. api-gateway decommissioned
+2026-04-27; code retained at `api-gateway/` in case re-deployment is needed.
 
 ### API key format
 
-Keys are generated as `agk_` followed by 64 hex characters (32 random bytes). They are shown exactly once on creation. Only a bcrypt hash is stored in the `api_keys` table — plaintext is never persisted.
+Keys have the prefix `pcp_board_` followed by 48 hex characters (24 random bytes).
+Format: `pcp_board_<48 hex chars>`. Keys are shown exactly once at creation. Only a
+SHA-256 hash is stored in the `board_api_keys` table — plaintext is never persisted.
 
 ### Auth flow (end-to-end)
 
 ```
-Client → api-gateway:
-  Authorization: Bearer agk_<token>
+Caller → paperclipai (direct, public):
+  Authorization: Bearer pcp_board_<token>
   Content-Type: application/json
-  { "caller_type": "n8n", ... }
+  { ... }
 ```
 
-1. **api-gateway** hashes the bearer token with bcrypt and looks it up in `api_keys`.
-   - Not found or `revoked_at` is set → 401.
-2. **api-gateway** validates that the body's `caller_type` matches the key's stored `caller_type` claim.
-   - Mismatch → 400. The key's claim wins; a mismatch indicates a misconfigured caller.
-3. **api-gateway** checks a fixed-window Redis rate limit keyed by `app_id`.
-   - Exceeded → 429 with `Retry-After` header.
-4. **api-gateway** builds signed claims headers:
-   ```
-   X-Caller-Type: n8n
-   X-App-Id: n8n-prod
-   X-Capabilities: <base64(["qualify_and_respond"])>
-   X-Budget-Pool: default
-   X-Claims-Signature: <HMAC-SHA256(canonical, API_GATEWAY_SIGNING_SECRET)>
-   ```
-   Canonical string: `{X-Caller-Type}|{X-App-Id}|{X-Capabilities}|{X-Budget-Pool}`
-5. **api-gateway** strips the original `Authorization` header and forwards the request to paperclipai's internal URL with the signed headers.
-
-```
-api-gateway → paperclipai (internal Docker network only):
-  X-Caller-Type: n8n
-  X-App-Id: n8n-prod
-  X-Capabilities: <base64 JSON>
-  X-Budget-Pool: default
-  X-Claims-Signature: <hex>
-  Content-Type: application/json
-  { "caller_type": "n8n", ... }
-```
-
-6. **paperclipai** (`ClaimsVerificationMiddleware`) verifies `X-Claims-Signature` against the four claim headers using the shared `API_GATEWAY_SIGNING_SECRET`.
-   - Missing or invalid → 401. Request is rejected before any handler runs.
-7. **paperclipai** sets `request.state.caller_type` from `X-Caller-Type`. The intent handler uses this as the authoritative value for persistence.
+1. **paperclipai** auth middleware extracts the Bearer token.
+2. Hashes with SHA-256 and looks up in `board_api_keys` where `revoked_at IS NULL`.
+   - Not found → actor set to `none`, request continues unauthenticated (may 401 at route level).
+3. Resolves the board user's company memberships and instance admin role.
+4. Sets `req.actor` with `type: "board"`, company IDs, and `isInstanceAdmin` flag.
+5. Route handlers call `assertBoard(req)` to enforce board-level auth.
 
 ### Key management
 
+Keys are created directly against the embedded PostgreSQL in the paperclipai container.
+See `PIVOT_TO_PAPERCLIP.md` → "How to issue more keys" for the full command.
+
 ```bash
-# Create key
-python -m app.cli create-key --app-id myapp --caller-type client_app \
-  --capabilities read_status,qualify --budget-pool default --rate 120
+# List existing keys (shows names and IDs, never hashes)
+docker exec ihe84uqp2yr5bu9wd43w34dq-022254323882 node -e "
+const { Client } = require('/app/node_modules/.pnpm/pg@8.18.0/node_modules/pg');
+const c = new Client({host:'127.0.0.1',port:54329,user:'paperclip',password:'paperclip',database:'paperclip'});
+c.connect().then(()=>c.query('SELECT id,name,created_at,expires_at,revoked_at FROM board_api_keys ORDER BY created_at')).then(r=>{console.log(JSON.stringify(r.rows,null,2));c.end();}).catch(e=>{console.error(e.message);c.end();});
+"
 
-# List keys (shows prefix only, never hash)
-python -m app.cli list-keys
-
-# Revoke key
-python -m app.cli revoke-key --key-id 01HX...
+# Revoke a key by ID
+docker exec ihe84uqp2yr5bu9wd43w34dq-022254323882 node -e "
+const { Client } = require('/app/node_modules/.pnpm/pg@8.18.0/node_modules/pg');
+const c = new Client({host:'127.0.0.1',port:54329,user:'paperclip',password:'paperclip',database:'paperclip'});
+c.connect().then(()=>c.query('UPDATE board_api_keys SET revoked_at=NOW() WHERE id=\$1', ['KEY-UUID-HERE'])).then(()=>{console.log('revoked');c.end();}).catch(e=>{console.error(e.message);c.end();});
+"
 ```
 
-Revocation takes effect immediately — the next request with the revoked key returns 401.
+Revocation takes effect immediately — the next request with the revoked key is treated as unauthenticated.
 
 ### Network topology
 
 ```
-Internet → Traefik (coolify-proxy) → api-gateway (public route)
-                                    ↓ internal Docker network
-                                 paperclipai (internal-only route)
+Internet → Traefik (coolify-proxy) → paperclipai (direct public route)
 ```
 
-paperclipai's Traefik router is labeled with `allowlist-internal-only` middleware. Direct public requests to `{PAPERCLIPAI_HOSTNAME}` are blocked at the proxy layer. The only path from the internet to paperclipai is through api-gateway.
+paperclipai is now the public endpoint. `api.cfpa.sekuirtek.com` returns 503 (Traefik
+catch-all, no backend). DNS record preserved but no route configured.
 
-### Open questions resolved
+### Provisioned keys (2026-04-27)
 
-- **Auth mechanism:** API key bearer + HMAC claim signing (this document).
-- **Key storage:** bcrypt hash in `api_gateway.api_keys` table.
-- **Coolify env vars:** `API_GATEWAY_SIGNING_SECRET` set per-VPS in Coolify's environment config. Never committed to git.
-- **BASE_URL per-VPS:** set as `BASE_URL` Coolify env var on the paperclipai service.
+| Name | ID | Purpose |
+|---|---|---|
+| n8n-prod | `98c90c86-8765-424a-8554-b259b98c6b34` | n8n workflow automation |
+| paperclipai-ui | `ad0dd2b4-df7e-42f6-96d6-4e5ec3d0cfda` | Programmatic UI-adjacent access |
 
-Previously recorded as TBD in `PHASE_1_NOTES.md` — now definitive.
+Key values stored in your secrets manager. Never in git.
