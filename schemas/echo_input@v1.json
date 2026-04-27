@@ -1,0 +1,11 @@
+{
+  "$id": "https://schemas.paperclipai/echo_input@v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EchoInput",
+  "type": "object",
+  "required": ["text"],
+  "properties": {
+    "text": { "type": "string", "description": "The text to echo back." }
+  },
+  "additionalProperties": false
+}

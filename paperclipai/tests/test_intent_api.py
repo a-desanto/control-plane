@@ -207,26 +207,75 @@ async def test_persisted_row_matches_submitted_payload(
     assert stored_constraints["max_cost_usd"] == payload["constraints"]["max_cost_usd"]
 
 
-async def test_sse_emits_accepted_and_closes(
+async def test_sse_emits_accepted_immediately(
     client: httpx.AsyncClient,
+    db_engine,
 ) -> None:
     payload = {**_VALID_INTENT, "idempotency_key": "sse-check-005", "intent_id": "01HXTEST000000000000000008"}
-    # create the intent first
     r = await client.post("/intent", json=payload)
     assert r.status_code == 202
     intent_id = r.json()["intent_id"]
 
-    # consume the SSE stream
-    events = []
-    async with client.stream("GET", f"/intent/{intent_id}/events") as resp:
-        assert resp.status_code == 200
-        assert "text/event-stream" in resp.headers.get("content-type", "")
-        async for line in resp.aiter_lines():
-            if line.startswith("event:"):
-                events.append(line.split(":", 1)[1].strip())
-            if line.startswith("data:"):
-                pass  # consumed
+    # httpx.ASGITransport buffers the entire ASGI response before returning, so
+    # client.stream() deadlocks against an infinite SSE generator: the generator
+    # loops forever waiting for a disconnect that httpx only signals after the
+    # response is complete (circular dependency).
+    #
+    # Fix: invoke the endpoint handler directly with a mock receive() that
+    # signals http.disconnect after 0.3 s.  sse_starlette's _listen_for_disconnect
+    # task picks up the disconnect message, sets active=False, and cancels the
+    # anyio task group — which raises CancelledError in the generator's
+    # wait_for(queue.get(), 5.0) and exits cleanly via the finally block.
+    import asyncio
 
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+    from starlette.requests import Request
+
+    from app.api.intent import get_intent_events
+
+    sf = async_sessionmaker(db_engine, expire_on_commit=False)
+    events: list[str] = []
+    seen_headers: dict = {}
+
+    async def _mock_receive() -> dict:
+        await asyncio.sleep(0.3)
+        return {"type": "http.disconnect"}
+
+    async def _mock_send(message: dict) -> None:
+        if message["type"] == "http.response.start":
+            seen_headers["status"] = message["status"]
+            seen_headers["content-type"] = dict(message.get("headers", [])).get(
+                b"content-type", b""
+            ).decode()
+        elif message["type"] == "http.response.body":
+            for line in message.get("body", b"").decode().split("\n"):
+                if line.startswith("event:"):
+                    events.append(line.split(":", 1)[1].strip())
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "path": f"/intent/{intent_id}/events",
+        "raw_path": f"/intent/{intent_id}/events".encode(),
+        "query_string": b"",
+        "headers": [],
+        "server": ("testserver", 80),
+        "client": ("testclient", 50000),
+        "root_path": "",
+        "scheme": "http",
+        "state": {},
+    }
+
+    async with sf() as db:
+        request = Request(scope, _mock_receive)
+        sse_response = await get_intent_events(intent_id, request, db)
+
+    await asyncio.wait_for(sse_response(scope, _mock_receive, _mock_send), timeout=5.0)
+
+    assert seen_headers.get("status") == 200
+    assert "text/event-stream" in seen_headers.get("content-type", "")
     assert "accepted" in events, f"expected 'accepted' event, got: {events}"
 
 

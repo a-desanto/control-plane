@@ -1,0 +1,6 @@
+[project]
+name = "echo-mcp"
+version = "1.0.0"
+description = "Echo MCP server — returns text and its character length."
+requires-python = ">=3.12"
+dependencies = ["mcp>=1.0.0"]

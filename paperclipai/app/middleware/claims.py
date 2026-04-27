@@ -15,7 +15,6 @@ import os
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
 
 
 def _should_bypass() -> bool:
@@ -46,17 +45,26 @@ def _verify(headers) -> bool:
         return False
 
 
-class ClaimsVerificationMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        if request.url.path.startswith("/intent"):
-            if _should_bypass():
-                return await call_next(request)
-            if not _verify(request.headers):
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "missing or invalid gateway claims signature"},
-                )
-            # Expose verified claims on request state for downstream handlers.
-            request.state.caller_type = request.headers.get("x-caller-type", "")
-            request.state.app_id = request.headers.get("x-app-id", "")
-        return await call_next(request)
+class ClaimsVerificationMiddleware:
+    """Pure ASGI middleware — avoids BaseHTTPMiddleware's response-buffering
+    that deadlocks httpx ASGI transport when SSE streams are left open."""
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] == "http" and scope["path"].startswith("/intent"):
+            request = Request(scope, receive)
+            if not _should_bypass():
+                if not _verify(request.headers):
+                    response = JSONResponse(
+                        status_code=401,
+                        content={"detail": "missing or invalid gateway claims signature"},
+                    )
+                    await response(scope, receive, send)
+                    return
+                # Expose verified claims on scope state for downstream handlers.
+                state = scope.setdefault("state", {})
+                state["caller_type"] = request.headers.get("x-caller-type", "")
+                state["app_id"] = request.headers.get("x-app-id", "")
+        await self.app(scope, receive, send)
