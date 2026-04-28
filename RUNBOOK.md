@@ -242,6 +242,36 @@ not needed there and would silently break beta features.**
 always pass the company UUID (`bd80728d-6755-4b63-a9b9-c0e24526c820`) in API paths — never
 the URL slug (`CAR`).
 
+### How to add an OpenAI-tuned agent (OpenCode with GPT-4.1)
+
+OpenCode supports multiple model providers. To run an OpenAI model via OpenRouter:
+
+1. **Add env vars** to paperclipai (`ihe84uqp2yr5bu9wd43w34dq`) in Coolify:
+   - `OPENAI_BASE_URL=https://openrouter.ai/api/v1`
+   - `OPENAI_API_KEY=<same OpenRouter key as ANTHROPIC_API_KEY>`
+   Restart paperclipai after setting.
+
+2. **Create a new agent** in paperclip's UI:
+   - Adapter type: `OpenCode (local)`
+   - Model: `openai/gpt-4.1` (verified available on OpenRouter as of 2026-04-28)
+   - Heartbeat: ON
+
+3. **Smoke test** with a simple issue assigned to the new agent. The heartbeat run's `usageJson.model` field should show `openai/gpt-4.1` and `biller: openrouter`.
+
+**Why not always keep OPENAI_BASE_URL set:** No agent in the current stack uses it by default (opencode-agent uses Anthropic, openclaw-worker uses Anthropic). It's safe to add on demand and remove afterward. Leaving it set with an OpenRouter key is harmless but adds surface area.
+
+### Codex CLI not viable via OpenRouter
+
+The `codex` binary (v0.125.0, present in paperclip's container image) uses OpenAI's **Responses API via WebSocket** (`wss://api.openai.com/v1/responses`). `OPENAI_BASE_URL` redirects only REST calls — WebSocket connections are hardcoded to `api.openai.com`. OpenRouter does not implement the Responses API WebSocket protocol.
+
+**Symptom:** Every heartbeat run for a codex-type agent exits 1 with:
+```
+401 Unauthorized: Missing bearer or basic authentication in header
+url: https://api.openai.com/v1/responses
+```
+
+**Fix:** Use OpenCode with `openai/gpt-4.1` for OpenAI-tuned tasks (see above). `codex-agent` was deleted from the deployed stack on 2026-04-28. Re-evaluate if Codex CLI adds custom WebSocket base URL support or OpenRouter implements the Responses API.
+
 ### Cost expectations
 
 - OpenRouter markup: ~5% over Anthropic list pricing
@@ -331,3 +361,22 @@ const c = new Client({host:'127.0.0.1',port:54329,user:'paperclip',password:'pap
 c.connect().then(()=>c.query('SELECT id, name, issue_prefix FROM companies')).then(r=>{console.log(JSON.stringify(r.rows,null,2));c.end();}).catch(e=>{console.error(e.message);c.end();});
 "
 ```
+
+### Failed agent runs may be auto-closed by the CEO heartbeat
+
+When a native adapter agent's heartbeat run fails (exitCode 1), paperclip does not
+automatically move the issue to `blocked`. Instead, the CEO agent's heartbeat scan may
+survey the issue queue, determine the issue is unresolvable in its current state, and PATCH
+it to `done` — even though the adapter never successfully executed.
+
+**Observed:** Phase 3C smoke test issue CAR-7 (`codex-agent`) was marked `done` despite
+four consecutive failed heartbeat runs (all `401 Unauthorized`). The CEO's heartbeat run
+at 02:10:52 UTC cost $0.62 and closed the issue.
+
+**Implications:**
+- `status=done` does NOT guarantee an adapter ran. Check `executionRunId` and the heartbeat
+  run's `exitCode` if you need to verify actual execution.
+- The CEO closing issues adds unexpected LLM cost when adapters are misconfigured. Fix the
+  adapter first, not after noticing cost on the OpenRouter dashboard.
+- To prevent CEO interference while debugging an adapter: temporarily turn off heartbeat on
+  the CEO agent in paperclip's UI.

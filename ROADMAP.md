@@ -7,18 +7,16 @@ For ops procedures, see `RUNBOOK.md`.
 
 ---
 
-## Phase 3C — Enable OpenCode and Codex paperclip-native adapters
+## Phase 3C — Enable OpenCode native adapter ✓ DONE
 
-**Status:** Not started. Config only — no new code or containers needed.
+**Status:** Complete (2026-04-28). OpenCode (`opencode-agent`) is live and verified.
 
-paperclip's agent adapter dropdown already supports OpenCode (local) and Codex (local). Enabling them is:
-1. Create a new agent in paperclip's UI — adapter type: `OpenCode (local)`, name: `opencode-agent`
-2. Create a new agent — adapter type: `Codex (local)`, name: `codex-agent`
-3. Both run via paperclip's heartbeat; no external worker container needed.
-4. Set `ANTHROPIC_BASE_URL=http://openrouter-proxy:4001` / `OPENAI_BASE_URL=https://openrouter.ai/api/v1` (verify exact var names per adapter) so they route through OpenRouter.
-5. Verify each with a small task analogous to the Phase 3B smoke test.
+- Adapter type: `OpenCode (local)`, using `anthropic/claude-sonnet-4-6` via `ANTHROPIC_BASE_URL=http://openrouter-proxy:4001`
+- Smoke test CAR-6 completed: exitCode 0, $0.077, billed via OpenRouter
+- No new containers — paperclip's heartbeat drives execution directly
+- `codex-agent` was created and deleted: see "Explicitly dropped" section below
 
-**Why these instead of another external worker:** vendor-neutral diversity future-proofs against any single LLM provider's terms changing. An OpenClaw worker with a PR-tuned system prompt already covers issue→PR. More worker containers with different operational patterns aren't worth the maintenance cost.
+**To add an OpenAI-tuned OpenCode agent on demand:** see `RUNBOOK.md §4`.
 
 ---
 
@@ -59,6 +57,12 @@ Coolify → Add Server → apply template → set per-client env vars
 ---
 
 ## Explicitly dropped
+
+**Codex CLI native adapter:** Dropped. The `codex` binary (v0.125.0, installed in paperclip's image) uses OpenAI's **Responses API via WebSocket** (`wss://api.openai.com/v1/responses`). `OPENAI_BASE_URL` redirects REST calls only — WebSocket connections are hardcoded to `api.openai.com`. OpenRouter does not implement the Responses API WebSocket protocol. Result: `codex-agent` exits 1 with `401 Unauthorized` on every heartbeat run.
+
+Re-evaluate if: (a) Codex CLI adds custom WebSocket base URL support, OR (b) OpenRouter implements the Responses API. For OpenAI-model tasks in the meantime, use OpenCode with `openai/gpt-4.1` via OpenRouter (see `RUNBOOK.md §4`).
+
+---
 
 **Holon worker (formerly "Phase 3C"):** Dropped. The original idea was a second worker container implementing a structured issue→PR lifecycle via the Holon protocol. This is unnecessary:
 
