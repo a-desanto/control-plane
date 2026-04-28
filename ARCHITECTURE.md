@@ -29,16 +29,18 @@ paperclip tracks all state. Workers are stateless consumers of the issue queue. 
 
 ---
 
-## The four execution paths
+## Execution paths
 
-| Path | Name | Mechanism | Status |
-|------|------|-----------|--------|
-| A | Planning | CEO/Operator agent creates and decomposes issues via paperclip's web UI or API | Deployed |
-| B | OpenClaw | `openclaw-worker` polls for `todo` issues assigned to the Code Execution Worker agent, claims each, runs `openclaw agent --local`, reports back | Deployed — verified Phase 3B |
-| C | Holon | Holon worker: issue→PR automation with structured code-change lifecycle | Planned — not started |
-| D | Claude CLI exploratory | Developer invokes Claude CLI directly against a repo for ad-hoc work | Non-canonical — no worker, no paperclip integration |
+| Path | Executor | Status | Use for |
+|------|----------|--------|---------|
+| A | paperclip + OpenRouter (native LLM call) | Live | Planning, reasoning, decisions |
+| B | OpenClaw via external worker (`openclaw-worker`) | Live — verified Phase 3B | Headless code execution (default) |
+| B-alt | OpenCode (paperclip native adapter) | Roadmap — Phase 3C | Vendor-neutral fallback / second opinion |
+| B-alt | Claude Code (paperclip native adapter) | Available, not yet configured | Anthropic-tuned tasks, exploratory |
+| B-alt | Codex (paperclip native adapter) | Roadmap — Phase 3C | OpenAI-tuned tasks |
+| D | Claude CLI on host | Non-canonical | Human-driven exploration only |
 
-**Path B is the primary code execution path today.** Path A is how work enters the queue (human or agent creates issues). Paths C and D are future or non-canonical.
+**NOTE on issue→PR work:** This runs through Path B (OpenClaw worker) with a PR-tuned system prompt on the assigned agent. There is no separate "Path C" executor for PR automation. Specialized PR workflow is a system prompt configuration, not an architectural component. The prior "Holon worker" idea was dropped — see `ROADMAP.md`.
 
 ---
 
@@ -135,20 +137,9 @@ https://openrouter.ai/api/v1/messages
 
 ---
 
-## Roadmap items (not current state)
-
-| Item | Status | Notes |
-|------|--------|-------|
-| Path C — Holon worker | Not started | issue→PR automation; structured code-change lifecycle |
-| OpenClaw Gateway native adapter | Blocked on upstream | paperclip is building native OpenClaw Gateway adapter; when shipped, `openclaw-worker` can be removed |
-| Per-VPS Coolify template | Not started | Export current state as Coolify template; document onboarding for new clients (Phase 5) |
-| Hermes/OpenCode/Codex agents | Optional | paperclip already supports these as adapter types; just create agents in UI with the right adapter |
-| Agent budget cost reporting | Open question | How do per-agent budgets interact with worker-claimed tasks? Verify cost from openclaw-worker registers against agent's budget cap |
-
----
-
 ## What this document is NOT
 
 - Not a build guide — see `RUNBOOK.md` for ops procedures.
+- Not a roadmap — see `ROADMAP.md`.
 - Not a historical record of the pivot — see `PIVOT_TO_PAPERCLIP.md`.
 - Not a reference for the old FastAPI brain — see git history pre-commit `684694f`.

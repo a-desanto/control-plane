@@ -7,47 +7,62 @@ For ops procedures, see `RUNBOOK.md`.
 
 ---
 
-## Phase 3C — Holon worker (Path C)
+## Phase 3C — Enable OpenCode and Codex paperclip-native adapters
 
-**What:** A second worker container that implements issue→PR automation. Where openclaw-worker (Path B) executes a task and reports a summary, the Holon worker would: clone the repo, apply changes via Holon's structured code-change protocol, open a pull request, and link it back to the paperclip issue.
+**Status:** Not started. Config only — no new code or containers needed.
 
-**Status:** Not started.
+paperclip's agent adapter dropdown already supports OpenCode (local) and Codex (local). Enabling them is:
+1. Create a new agent in paperclip's UI — adapter type: `OpenCode (local)`, name: `opencode-agent`
+2. Create a new agent — adapter type: `Codex (local)`, name: `codex-agent`
+3. Both run via paperclip's heartbeat; no external worker container needed.
+4. Set `ANTHROPIC_BASE_URL=http://openrouter-proxy:4001` / `OPENAI_BASE_URL=https://openrouter.ai/api/v1` (verify exact var names per adapter) so they route through OpenRouter.
+5. Verify each with a small task analogous to the Phase 3B smoke test.
 
-**Depends on:** openclaw-worker pattern (done) — Holon worker would follow the same poll/claim/execute/report loop with a different executor.
+**Why these instead of another external worker:** vendor-neutral diversity future-proofs against any single LLM provider's terms changing. An OpenClaw worker with a PR-tuned system prompt already covers issue→PR. More worker containers with different operational patterns aren't worth the maintenance cost.
 
 ---
 
-## Phase 4 — OpenClaw Gateway native adapter
+## Phase 4 — OpenClaw Gateway native adapter migration
 
-**What:** paperclip is building a native OpenClaw Gateway adapter. When it ships, workers running OpenClaw can register directly as paperclip adapters instead of being polled workers. This eliminates the need for `openclaw-worker` as a separate container.
+**Status:** Blocked on upstream paperclip release.
 
-**Status:** Blocked on upstream (paperclip product roadmap). The openclaw-worker agent UI dropdown in paperclip already shows adapter-type options — watch for OpenClaw Gateway to appear there.
+paperclip's adapter dropdown lists "OpenClaw Gateway (gateway)" as *Coming soon*. When it ships:
+1. Create an agent in paperclip with adapter type `OpenClaw Gateway`, point it at the OpenClaw instance URL.
+2. Delete `workers/openclaw-worker/` from this repo.
+3. Remove the Coolify app `v3b2daw5wvaval2r6sb6mrxn`.
 
-**When this lands:** Create an agent in paperclip with adapter type set to OpenClaw Gateway, point it at the OpenClaw instance URL, delete `openclaw-worker`. The issue queue and paperclip integration remain unchanged.
+The issue queue and API key stay the same. This is a shrink-the-surface-area change, not a feature.
 
 ---
 
 ## Phase 5 — Per-VPS Coolify template for new clients
 
-**What:** Export the current VPS state (paperclipai + openrouter-proxy + openclaw-worker + n8n + Flowise + activepieces) as a Coolify template. Document the onboarding steps: provision VPS → apply template → set env vars → bootstrap paperclip → issue first API key → verify health.
-
 **Status:** Not started.
 
-**Input needed:** Decide which optional apps (Flowise, activepieces) belong in the base template versus being added per-client.
+Export the current Coolify project state (paperclipai + openrouter-proxy + openclaw-worker + n8n + ancillary) as a deployable template. Document the onboarding flow in `RUNBOOK.md`:
+
+```
+Coolify → Add Server → apply template → set per-client env vars
+  → bootstrap company in paperclip → issue first API key → verify health
+```
+
+**Open input:** Decide which optional apps (Flowise, activepieces) belong in the base template vs. added per-client.
 
 ---
 
-## Phase 6 — Hermes/OpenCode/Codex agents
+## Open questions to resolve before scaling beyond one VPS
 
-**What:** paperclip already supports these as native adapter types. No worker container needed — just create agents in paperclip's UI with the appropriate adapter type (`Hermes Agent (local)`, `OpenCode`, `Codex`, etc.) and configure the adapter URL.
-
-**Status:** Optional. Low effort once the adapter is running; effort is standing up the adapter service itself.
+- **Agent budget tracking:** How do paperclip's per-agent budgets interact with worker-claimed tasks? Verify cost from `openclaw-worker` invocations registers against the Code Execution Worker agent's budget cap. Check paperclip's billing/cost UI after a few real tasks.
+- **Company portability:** Does paperclip's export feature work cleanly for the openclaw-worker setup, or does each new VPS need manual agent creation + key issuance?
+- **OpenRouter key strategy:** Single shared key across fleet, or per-VPS keys for cost isolation and blast-radius control?
 
 ---
 
-## Open questions
+## Explicitly dropped
 
-| Question | Status |
-|----------|--------|
-| How do paperclip's per-agent budgets interact with worker-claimed tasks? Does cost from `openclaw-worker` invocations register against the Code Execution Worker agent's budget cap? | Unverified — check paperclip's billing/cost UI after a few real tasks run |
-| Should Flowise and activepieces be in the per-client base template (Phase 5) or added on demand? | Undecided |
+**Holon worker (formerly "Phase 3C"):** Dropped. The original idea was a second worker container implementing a structured issue→PR lifecycle via the Holon protocol. This is unnecessary:
+
+- An OpenClaw worker with a PR-tuned system prompt on the assigned agent handles issue→PR today.
+- A specialized executor for one workflow pattern violates the "executors are replaceable" principle — the workflow should be a system prompt configuration, not an architectural component.
+- Holon's specific niche is being absorbed by general-purpose agents and GitHub's first-party tooling.
+- Adding another external worker with its own operational surface (container, polling loop, error modes) isn't worth it when the existing worker can do the same job.
