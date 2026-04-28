@@ -1,7 +1,14 @@
-# Control Plane
+# control-plane
 
-This repository defines the canonical architecture for the platform.
+Per-client VPS configuration and worker code for the paperclipai platform. paperclip is the brain; this repo defines the executors, proxy, and automation wiring that surround it.
 
-➡️ See **ARCHITECTURE.md** for system invariants and design rules.
+**First time here?** Read [`ARCHITECTURE.md`](ARCHITECTURE.md), then [`RUNBOOK.md`](RUNBOOK.md).
 
-Any service or workflow deployed on this VPS must comply with it.
+## Docs
+
+| File | What it covers |
+|------|----------------|
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Current deployed stack, component UUIDs, execution paths, auth model, LLM routing |
+| [`RUNBOOK.md`](RUNBOOK.md) | Env vars, deploy steps, key management, known gotchas |
+| [`ROADMAP.md`](ROADMAP.md) | What comes next (Holon worker, OpenClaw native adapter, per-VPS template) |
+| [`PIVOT_TO_PAPERCLIP.md`](PIVOT_TO_PAPERCLIP.md) | History: why we decommissioned the custom FastAPI brain |

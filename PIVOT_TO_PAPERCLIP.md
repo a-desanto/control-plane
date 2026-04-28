@@ -4,22 +4,24 @@
 
 ---
 
-## Phase 1 — paperclip-backend decommissioned (2026-04-26)
+## Phase 1 — paperclip-backend decommissioned (2026-04-26); deleted (2026-04-27)
 
 `paperclip-backend` — the custom FastAPI service built during Phases 0–2B of this project
 (Coolify application `kz9wfv4by3aggvz1eaw2kol4`).
 
-The container has been stopped and left in `exited:unhealthy` state. The Postgres database
-(`paperclip-backend-db`) and all Coolify configuration have been preserved; nothing was deleted.
+Initially stopped 2026-04-26. Coolify app fully deleted 2026-04-27 via
+`DELETE /api/v1/applications/kz9wfv4by3aggvz1eaw2kol4`. No recovery path via Coolify UI;
+code recovery via `git checkout 684694f` if ever needed.
 
-## Phase 2 — api-gateway decommissioned (2026-04-27)
+## Phase 2 — api-gateway decommissioned (2026-04-27); deleted (2026-04-27)
 
 `api-gateway` — the FastAPI edge router that validated HMAC-signed claims before forwarding
 to paperclipai (Coolify application `fh3l092hvgk621zagxwg4non`).
 
-The container has been stopped. `traefik.enable=false` has been set on the Coolify app so
-that even a manual restart does not advertise the Traefik route. The Coolify app record and
-image are preserved.
+Initially stopped 2026-04-27 with `traefik.enable=false`. Coolify app fully deleted
+2026-04-27 via `DELETE /api/v1/applications/fh3l092hvgk621zagxwg4non`. Code deleted from
+working tree in commit `467c0c7` — to re-deploy from history:
+`git checkout 467c0c7 -- api-gateway/` then deploy as a Coolify app pointing at that directory.
 
 **Why decommissioned:** paperclipai handles its own auth via board API keys (`pcp_board_*`
 tokens, SHA-256 hashed in `board_api_keys` table). The HMAC claim-signing layer api-gateway
@@ -67,8 +69,8 @@ Caller (n8n, UI, etc.)
 | Service | UUID | Status |
 |---|---|---|
 | paperclipai | `ihe84uqp2yr5bu9wd43w34dq` | running |
-| api-gateway | `fh3l092hvgk621zagxwg4non` | stopped (traefik.enable=false) |
-| paperclip-backend | `kz9wfv4by3aggvz1eaw2kol4` | stopped |
+| api-gateway | `fh3l092hvgk621zagxwg4non` | **deleted 2026-04-27** |
+| paperclip-backend | `kz9wfv4by3aggvz1eaw2kol4` | **deleted 2026-04-27** |
 
 ---
 
