@@ -286,7 +286,7 @@ url: https://api.openai.com/v1/responses
 ## §5 openclaw-worker
 
 Long-running worker container that polls paperclip for `todo` issues assigned to the
-`Code Execution Worker` agent, executes each via OpenClaw's embedded agent, and reports
+`openclaw-agent` agent, executes each via OpenClaw's embedded agent, and reports
 results back. Source: `workers/openclaw-worker/` in this repo.
 
 ### Coolify app
@@ -325,6 +325,10 @@ Edit `workers/openclaw-worker/src/worker.py` and `git push origin main`. Coolify
 ---
 
 ## §6 Known Operational Quirks
+
+### Agent rename history
+
+`Code Execution Worker` → `openclaw-agent` on 2026-04-28. UUID `e3e191c3-b7d4-4d2d-bfe4-2709db3b76a2` unchanged. Worker container `PAPERCLIP_AGENT_ID` env var was unaffected.
 
 ### "User does not have access to this company" — slug vs UUID
 
