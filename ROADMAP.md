@@ -50,7 +50,7 @@ Coolify → Add Server → apply template → set per-client env vars
 
 ## Open questions to resolve before scaling beyond one VPS
 
-- **Agent budget tracking:** How do paperclip's per-agent budgets interact with worker-claimed tasks? Verify cost from `openclaw-worker` invocations registers against the Code Execution Worker agent's budget cap. Check paperclip's billing/cost UI after a few real tasks.
+- **Agent budget tracking:** How do paperclip's per-agent budgets interact with worker-claimed tasks? Verify cost from `openclaw-worker` invocations registers against the `openclaw-agent` budget cap. Check paperclip's billing/cost UI after a few real tasks.
 - **Company portability:** Does paperclip's export feature work cleanly for the openclaw-worker setup, or does each new VPS need manual agent creation + key issuance?
 - **OpenRouter key strategy:** Single shared key across fleet, or per-VPS keys for cost isolation and blast-radius control?
 

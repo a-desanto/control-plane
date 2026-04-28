@@ -77,7 +77,7 @@ paperclip is multi-tenant. All entities live inside its embedded PostgreSQL (por
 | Entity | Notes |
 |--------|-------|
 | **Companies** | Top-level tenant. "Caring First" is the canonical company: UUID `bd80728d-6755-4b63-a9b9-c0e24526c820`, URL slug `CAR`. **Always use UUID in API calls — the slug never works as a path segment.** |
-| **Agents** | Named actors within a company. CEO, Operator, and Code Execution Worker are provisioned. Workers are identified by UUID, not name. |
+| **Agents** | Named actors within a company. CEO, Operator, and openclaw-agent are provisioned. Workers are identified by UUID, not name. |
 | **Issues** | The unit of work. Status lifecycle: `todo` → `in_progress` → `done` or `blocked`. Issues are assigned to an agent by UUID. Workers poll for `todo` issues assigned to their agent ID. |
 | **Board API keys** | `pcp_board_<48 hex chars>`. SHA-256 hashed at rest. Scoped to the owning user's company memberships via UUID join. |
 
@@ -85,7 +85,7 @@ paperclip is multi-tenant. All entities live inside its embedded PostgreSQL (por
 
 | Agent | UUID |
 |-------|------|
-| Code Execution Worker | `e3e191c3-b7d4-4d2d-bfe4-2709db3b76a2` |
+| openclaw-agent | `e3e191c3-b7d4-4d2d-bfe4-2709db3b76a2` |
 
 ---
 
