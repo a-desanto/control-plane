@@ -242,41 +242,53 @@ not needed there and would silently break beta features.**
 always pass the company UUID (`bd80728d-6755-4b63-a9b9-c0e24526c820`) in API paths — never
 the URL slug (`CAR`).
 
-### How to add an OpenAI-tuned agent (OpenCode with GPT-4.1)
+### Anti-pattern: OpenAI models via OpenCode through OpenRouter
 
-OpenCode supports multiple model providers. To run an OpenAI model via OpenRouter:
+**Do not attempt this.** Two attempts, two structural failures at different layers.
 
-1. **Add env vars** to paperclipai (`ihe84uqp2yr5bu9wd43w34dq`) in Coolify:
-   - `OPENAI_BASE_URL=https://openrouter.ai/api/v1`
-   - `OPENAI_API_KEY=<same OpenRouter key as ANTHROPIC_API_KEY>`
-   Restart paperclipai after setting.
-
-2. **Create a new agent** in paperclip's UI:
-   - Adapter type: `OpenCode (local)`
-   - Model: `openai/gpt-4.1` (verified available on OpenRouter as of 2026-04-28)
-   - Heartbeat: ON
-
-3. **Smoke test** with a simple issue assigned to the new agent. The heartbeat run's `usageJson.model` field should show `openai/gpt-4.1` and `biller: openrouter`.
-
-**Why not always keep OPENAI_BASE_URL set:** No agent in the current stack uses it by default (opencode-agent uses Anthropic, openclaw-worker uses Anthropic). It's safe to add on demand and remove afterward. Leaving it set with an OpenRouter key is harmless but adds surface area.
-
-### Codex CLI not viable via OpenRouter
-
-The `codex` binary (v0.125.0, present in paperclip's container image) uses OpenAI's **Responses API via WebSocket** (`wss://api.openai.com/v1/responses`). `OPENAI_BASE_URL` redirects only REST calls — WebSocket connections are hardcoded to `api.openai.com`. OpenRouter does not implement the Responses API WebSocket protocol.
-
-**Symptom:** Every heartbeat run for a codex-type agent exits 1 with:
+**Failure 1 — Codex CLI (2026-04-28):**
+The `codex` binary (v0.125.0) uses OpenAI's Responses API exclusively via WebSocket
+(`wss://api.openai.com/v1/responses`). `OPENAI_BASE_URL` only redirects REST calls —
+WebSocket connections are hardcoded to `api.openai.com`. OpenRouter does not implement
+the Responses API WebSocket protocol. Every heartbeat exits 1 with:
 ```
 401 Unauthorized: Missing bearer or basic authentication in header
 url: https://api.openai.com/v1/responses
 ```
 
-**Fix:** Use OpenCode with `openai/gpt-4.1` for OpenAI-tuned tasks (see above). `codex-agent` was deleted from the deployed stack on 2026-04-28. Re-evaluate if Codex CLI adds custom WebSocket base URL support or OpenRouter implements the Responses API.
+**Failure 2 — OpenCode CLI with `openai/gpt-4.1` (2026-04-28):**
+OpenCode routes all `openai/*` models to OpenRouter's REST Responses API endpoint
+(`POST https://openrouter.ai/api/v1/responses`). OpenRouter's Responses API
+implementation is unstable — the request fails with Zod validation errors:
+```
+{"error":{"code":"invalid_prompt","message":"Invalid Responses API request"},
+ "metadata":{"url":"https://openrouter.ai/api/v1/responses"}}
+```
+The Chat Completions path (`/api/v1/chat/completions`), which OpenRouter implements
+stably, is **never taken** for `openai/*` models in OpenCode. Model selection
+(`gpt-4.1`, `gpt-4o`, `gpt-5`, etc.) does not change this — all `openai/*` models
+hit the same broken path.
+
+**Root cause:** OpenCode's `openai` provider hardcodes the Responses API. The `opencode/`
+prefix models (e.g. `opencode/nemotron-3-super-free`) use a different internal path that
+goes through Chat Completions and does work via OpenRouter.
+
+**Confirmed working via OpenRouter:** `anthropic/*` models (claude-sonnet-4-6, etc.)
+and `opencode/*` preset models.
+
+**If OpenAI capability becomes truly required:**
+- Wait for OpenRouter to stabilize Responses API parity, OR
+- Wait for OpenCode to support a `--provider chat-completions` flag or equivalent, OR
+- Accept a separate direct OpenAI account (two billing dashboards, two keys, two
+  rotation procedures per VPS) — requires explicit decision before implementing.
+
+**OPENAI_BASE_URL / OPENAI_API_KEY** are not set on paperclipai and must not be added
+without a verified working path. `opencode-openai-agent` was deleted 2026-04-28.
 
 ### Cost expectations
 
 - OpenRouter markup: ~5% over Anthropic list pricing
-- Benefit: single key, multi-provider fallback, routing flexibility (can add `openai/gpt-*`
-  or `google/gemini-*` agents without separate accounts)
+- Benefit: single key, multi-model routing for Anthropic and `opencode/` preset models
 - OpenRouter model names use `anthropic/claude-sonnet-4.6` format; the proxy uses
   `claude-sonnet-4-6` (Anthropic short form) because it strips the `anthropic-beta` headers
   that break OpenRouter routing, and OpenRouter accepts short model names in `/messages`.

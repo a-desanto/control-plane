@@ -16,7 +16,7 @@ For ops procedures, see `RUNBOOK.md`.
 - No new containers — paperclip's heartbeat drives execution directly
 - `codex-agent` was created and deleted: see "Explicitly dropped" section below
 
-**To add an OpenAI-tuned OpenCode agent on demand:** see `RUNBOOK.md §4`.
+**OpenAI-via-OpenCode path explicitly dropped** — see `RUNBOOK.md §4` and "Explicitly dropped" section below.
 
 ---
 
@@ -58,9 +58,14 @@ Coolify → Add Server → apply template → set per-client env vars
 
 ## Explicitly dropped
 
-**Codex CLI native adapter:** Dropped. The `codex` binary (v0.125.0, installed in paperclip's image) uses OpenAI's **Responses API via WebSocket** (`wss://api.openai.com/v1/responses`). `OPENAI_BASE_URL` redirects REST calls only — WebSocket connections are hardcoded to `api.openai.com`. OpenRouter does not implement the Responses API WebSocket protocol. Result: `codex-agent` exits 1 with `401 Unauthorized` on every heartbeat run.
+**OpenAI via OpenCode (all variants):** Dropped 2026-04-28. Two attempts, same structural root:
 
-Re-evaluate if: (a) Codex CLI adds custom WebSocket base URL support, OR (b) OpenRouter implements the Responses API. For OpenAI-model tasks in the meantime, use OpenCode with `openai/gpt-4.1` via OpenRouter (see `RUNBOOK.md §4`).
+- *Codex CLI (attempt 1):* The `codex` binary (v0.125.0) hardcodes `wss://api.openai.com/v1/responses` (WebSocket Responses API). `OPENAI_BASE_URL` only redirects REST. Result: `codex-agent` exits 1 with `401 Unauthorized` on every heartbeat run.
+- *OpenCode + `openai/gpt-4.1` (attempt 2):* OpenCode routes all `openai/*` models to OpenRouter's Responses API REST endpoint (`/api/v1/responses`). OpenRouter's Responses API implementation is unstable; requests fail with Zod validation errors. The Chat Completions path is never taken for `openai/*` models regardless of which model is selected.
+
+`codex-agent` and `opencode-openai-agent` both deleted. `OPENAI_BASE_URL` / `OPENAI_API_KEY` removed from paperclipai env.
+
+Re-evaluate if: (a) OpenCode adds a `--provider chat-completions` flag or equivalent, OR (b) OpenRouter stabilizes Responses API parity. Direct OpenAI account (Option B) requires explicit approval before implementing — see `RUNBOOK.md §4`.
 
 ---
 
