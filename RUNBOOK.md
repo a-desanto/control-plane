@@ -224,3 +224,71 @@ To swap to a different OpenRouter key:
 - OpenRouter model names use `anthropic/claude-sonnet-4.6` format; the proxy uses
   `claude-sonnet-4-6` (Anthropic short form) because it strips the `anthropic-beta` headers
   that break OpenRouter routing, and OpenRouter accepts short model names in `/messages`.
+
+---
+
+## §5 openclaw-worker
+
+Long-running worker container that polls paperclip for `todo` issues assigned to the
+`Code Execution Worker` agent, executes each via OpenClaw's embedded agent, and reports
+results back. Source: `workers/openclaw-worker/` in this repo.
+
+### Coolify app
+
+| Field | Value |
+|---|---|
+| App UUID | `v3b2daw5wvaval2r6sb6mrxn` |
+| Source | `a-desanto/control-plane`, branch `main`, base `/workers/openclaw-worker` |
+| Network | `coolify` (shares Docker network with `paperclipai` and `openrouter-proxy`) |
+| Public domain | None (`traefik.enable=false`) |
+
+### Env vars (set in Coolify on app `v3b2daw5wvaval2r6sb6mrxn`)
+
+| Variable | Value |
+|---|---|
+| `PAPERCLIP_API_URL` | `https://paperclipai.cfpa.sekuirtek.com` |
+| `PAPERCLIP_COMPANY_ID` | `bd80728d-6755-4b63-a9b9-c0e24526c820` |
+| `PAPERCLIP_AGENT_ID` | `e3e191c3-b7d4-4d2d-bfe4-2709db3b76a2` |
+| `PAPERCLIP_API_KEY` | `pcp_board_f0d3***` (never commit — key id `5893678b-c34a-47db-92de-8d16d455d78c`) |
+| `OPENROUTER_API_KEY` | OpenRouter key (never commit) |
+| `ANTHROPIC_BASE_URL` | `http://openrouter-proxy:4001` |
+| `OPENCLAW_AGENT_PROFILE` | `executor` |
+| `WORKING_DIR_BASE` | `/workspace` |
+| `TASK_TIMEOUT_SECONDS` | `1800` |
+
+### Observability
+
+```bash
+docker logs $(docker ps -q --filter name=v3b2daw5wvaval2r6sb6mrxn) -f
+```
+
+### Update worker logic
+
+Edit `workers/openclaw-worker/src/worker.py` and `git push origin main`. Coolify auto-deploys.
+
+---
+
+## §6 Known Operational Quirks
+
+### "User does not have access to this company" — slug vs UUID
+
+paperclip's URL shows the company's `issue_prefix` (e.g. `CAR`), not its UUID. The REST API
+`assertCompanyAccess` compares against UUID-based `companyIds` on the actor. Passing the
+`issue_prefix` as the company ID will always return this error even when the user has valid
+membership.
+
+**Fix:** always use the UUID in `PAPERCLIP_COMPANY_ID` and all API paths.
+
+| Field | Correct value |
+|---|---|
+| "Caring First" company UUID | `bd80728d-6755-4b63-a9b9-c0e24526c820` |
+| URL slug (`issuePrefix`) | `CAR` — visible in browser URL, not usable as API path segment |
+
+To look up company UUID from the embedded DB:
+```bash
+docker exec ihe84uqp2yr5bu9wd43w34dq-* node -e "
+const { Client } = require('/app/node_modules/.pnpm/pg@8.18.0/node_modules/pg');
+const c = new Client({host:'127.0.0.1',port:54329,user:'paperclip',password:'paperclip',database:'paperclip'});
+c.connect().then(()=>c.query('SELECT id, name, issue_prefix FROM companies')).then(r=>{console.log(JSON.stringify(r.rows,null,2));c.end();}).catch(e=>{console.error(e.message);c.end();});
+"
+```
