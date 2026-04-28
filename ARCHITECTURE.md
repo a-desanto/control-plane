@@ -2,7 +2,7 @@
 
 ## Status
 
-Live. Last verified: 2026-04-27. Path B (openclaw-worker) confirmed working end-to-end via Phase 3B smoke test.
+Live. Last verified: 2026-04-28. Path B (openclaw-worker) and OpenCode native adapter both confirmed working end-to-end (Phase 3B + Phase 3C smoke tests).
 
 ---
 
@@ -35,9 +35,9 @@ paperclip tracks all state. Workers are stateless consumers of the issue queue. 
 |------|----------|--------|---------|
 | A | paperclip + OpenRouter (native LLM call) | Live | Planning, reasoning, decisions |
 | B | OpenClaw via external worker (`openclaw-worker`) | Live — verified Phase 3B | Headless code execution (default) |
-| B-alt | OpenCode (paperclip native adapter) | Roadmap — Phase 3C | Vendor-neutral fallback / second opinion |
+| B-alt | OpenCode with Anthropic model (paperclip native adapter) | Live — verified Phase 3C | Vendor-neutral fallback; uses `ANTHROPIC_BASE_URL` |
+| B-alt | OpenCode with OpenAI model via OpenRouter | Configurable on demand | OpenAI-tuned tasks; requires `OPENAI_BASE_URL` + `OPENAI_API_KEY` env vars — see `RUNBOOK.md §4` |
 | B-alt | Claude Code (paperclip native adapter) | Available, not yet configured | Anthropic-tuned tasks, exploratory |
-| B-alt | Codex (paperclip native adapter) | Roadmap — Phase 3C | OpenAI-tuned tasks |
 | D | Claude CLI on host | Non-canonical | Human-driven exploration only |
 
 **NOTE on issue→PR work:** This runs through Path B (OpenClaw worker) with a PR-tuned system prompt on the assigned agent. There is no separate "Path C" executor for PR automation. Specialized PR workflow is a system prompt configuration, not an architectural component. The prior "Holon worker" idea was dropped — see `ROADMAP.md`.
