@@ -36,7 +36,7 @@ paperclip tracks all state. Workers are stateless consumers of the issue queue. 
 | A | paperclip + OpenRouter (native LLM call) | Live | Planning, reasoning, decisions |
 | B | OpenClaw via external worker (`openclaw-worker`) | Live — verified Phase 3B | Headless code execution (default) |
 | B-alt | OpenCode with Anthropic model (paperclip native adapter) | Live — verified Phase 3C | Vendor-neutral fallback; uses `ANTHROPIC_BASE_URL` |
-| B-alt | OpenCode with OpenAI model via OpenRouter | Configurable on demand | OpenAI-tuned tasks; requires `OPENAI_BASE_URL` + `OPENAI_API_KEY` env vars — see `RUNBOOK.md §4` |
+| B-alt | OpenCode with `openai/*` model via OpenRouter | **Dropped** — structural blocker; see `RUNBOOK.md §4` | OpenCode routes `openai/*` to Responses API; OpenRouter's impl is unstable. `opencode/*` preset models work. |
 | B-alt | Claude Code (paperclip native adapter) | Available, not yet configured | Anthropic-tuned tasks, exploratory |
 | D | Claude CLI on host | Non-canonical | Human-driven exploration only |
 
