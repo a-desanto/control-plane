@@ -17,6 +17,8 @@ Companion to `ARCHITECTURE.md` and `BUILD_BRIEF.md`. Covers deployment, env vars
 | `PAPERCLIP_ALLOWED_HOSTNAMES` | Yes | — | Comma-separated allowed hostnames for CORS/auth. |
 | `ANTHROPIC_API_KEY` | Yes | — | API key for Claude. **Never commit.** |
 | `PAPERCLIP_REQUIRE_AGENT_APPROVAL` | No | `false` | Set `true` to require admin approval for new agents. |
+| `ANTHROPIC_BASE_URL` | Yes | — | Set to `http://openrouter-proxy:4001` to route through the proxy. Omit only when using direct Anthropic API. |
+| `NODE_ENV` | No | `production` | Standard Node env flag. Leave as `production`. |
 
 paperclipai uses an **embedded PostgreSQL** instance (port 54329 inside the container). No
 external `DATABASE_URL` is needed. The database is persisted via the container volume at
@@ -75,7 +77,7 @@ In Coolify UI: select the service → Deployments → redeploy previous tag.
 
 ---
 
-## §3 Auth mechanism
+## §3 Paperclip API keys
 
 **Design:** paperclip native board API key bearer tokens. api-gateway decommissioned
 2026-04-27, code deleted (last state: commit `467c0c7`).
@@ -85,6 +87,16 @@ In Coolify UI: select the service → Deployments → redeploy previous tag.
 Keys have the prefix `pcp_board_` followed by 48 hex characters (24 random bytes).
 Format: `pcp_board_<48 hex chars>`. Keys are shown exactly once at creation. Only a
 SHA-256 hash is stored in the `board_api_keys` table — plaintext is never persisted.
+
+### Current keys (2026-04-27)
+
+| Name | ID | Scope | Purpose | Expires |
+|------|-----|-------|---------|---------|
+| n8n-prod | `98c90c86-8765-424a-8554-b259b98c6b34` | board (full) | n8n workflow automation | 2027-04-27 |
+| paperclipai-ui | `ad0dd2b4-df7e-42f6-96d6-4e5ec3d0cfda` | board (full) | Programmatic UI-adjacent access | 2027-04-27 |
+| openclaw-worker | `5893678b-c34a-47db-92de-8d16d455d78c` | board (full) | openclaw-worker polling and status updates | — |
+
+Key **values** are stored in your secrets manager. Never in git.
 
 ### Auth flow (end-to-end)
 
@@ -216,6 +228,20 @@ To swap to a different OpenRouter key:
 2. Restart the proxy container.
 3. Update `ANTHROPIC_API_KEY` on app `ihe84uqp2yr5bu9wd43w34dq` to the new key and restart paperclipai.
 
+### Gotchas
+
+**`?beta=true` / `anthropic-beta` headers:** The Claude Code CLI sends
+`POST /v1/messages?beta=true` with `anthropic-beta` and `anthropic-version` request headers.
+OpenRouter's `/api/v1` endpoint returns 404 on the `?beta=true` suffix and may reject the
+beta headers. The proxy strips both before forwarding — this is the entire reason the proxy
+exists. **If you ever swap to direct Anthropic API, remove `ANTHROPIC_BASE_URL` from all apps
+that set it; don't just point it at Anthropic's base URL, as the proxy header-stripping is
+not needed there and would silently break beta features.**
+
+**Slug-vs-UUID for paperclip API access:** see §6 Known Operational Quirks. Short version:
+always pass the company UUID (`bd80728d-6755-4b63-a9b9-c0e24526c820`) in API paths — never
+the URL slug (`CAR`).
+
 ### Cost expectations
 
 - OpenRouter markup: ~5% over Anthropic list pricing
@@ -283,6 +309,19 @@ membership.
 |---|---|
 | "Caring First" company UUID | `bd80728d-6755-4b63-a9b9-c0e24526c820` |
 | URL slug (`issuePrefix`) | `CAR` — visible in browser URL, not usable as API path segment |
+
+### OpenClaw workspace vs. worker working directory
+
+`openclaw-worker` sets `cwd` to `/workspace/{issueId}` when invoking OpenClaw.
+OpenClaw itself maintains its own internal workspace at
+`/root/.openclaw/workspace-executor/` (configured in `openclaw.json`). These are different:
+
+- `/workspace/{issueId}` — the repo clone directory; this is what the agent's `bash`, `read`,
+  `edit`, `write` tools operate on (OpenClaw uses the process cwd as the root).
+- `/root/.openclaw/workspace-executor/` — OpenClaw's session state directory.
+
+If you exec into the container and don't see files where you expect them, check both paths.
+The worker deletes `/workspace/{issueId}` after each task (`shutil.rmtree` in `finally`).
 
 To look up company UUID from the embedded DB:
 ```bash
