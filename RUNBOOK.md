@@ -142,3 +142,86 @@ catch-all, no backend). DNS record preserved but no route configured.
 | paperclipai-ui | `ad0dd2b4-df7e-42f6-96d6-4e5ec3d0cfda` | Programmatic UI-adjacent access |
 
 Key values stored in your secrets manager. Never in git.
+
+---
+
+## §4 LLM Provider Configuration
+
+### Current provider: OpenRouter
+
+All Claude CLI invocations from the paperclipai container route through OpenRouter's
+Anthropic-compatible endpoint via a thin proxy running on the host VPS.
+
+**Why a proxy?** The Claude Code CLI v2.1.119 sends `POST /v1/messages?beta=true` with
+`anthropic-beta` headers containing Claude-specific beta feature flags. OpenRouter's
+`/api/v1` endpoint returns 404 for the `?beta=true` suffix. The proxy strips those before
+forwarding.
+
+### How it works
+
+```
+claude CLI → ANTHROPIC_BASE_URL → http://10.0.1.1:4001 (openrouter-proxy)
+                                           ↓
+                          POST https://openrouter.ai/api/v1/messages
+                          Authorization: Bearer <OPENROUTER_API_KEY>
+```
+
+The proxy (`/opt/openrouter-proxy/proxy.py`) runs as a systemd service:
+- Strips `?beta=true` and Anthropic-specific headers (`anthropic-beta`, `anthropic-version`, etc.)
+- Forwards only `Content-Type` and `Authorization: Bearer <key>` to OpenRouter
+- Handles `GET /models/*` with a fake 200 response so the CLI doesn't abort on model lookup
+
+### Env vars (set in Coolify on app `ihe84uqp2yr5bu9wd43w34dq`)
+
+| Variable | Value | Purpose |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | `sk-or-v1-***` | OpenRouter API key (never commit) |
+| `ANTHROPIC_BASE_URL` | `http://10.0.1.1:4001` | Points claude CLI at the proxy |
+
+The proxy reads `OPENROUTER_API_KEY` from its systemd `Environment=` directive in
+`/etc/systemd/system/openrouter-proxy.service`.
+
+### Firewall rule (persisted via ufw + iptables-save)
+
+```bash
+ufw allow from 10.0.0.0/8 to any port 4001 proto tcp comment "openrouter-proxy docker"
+```
+
+Docker container traffic uses the host gateway `10.0.1.1` to reach the proxy.
+
+### Proxy management
+
+```bash
+# Status
+systemctl status openrouter-proxy
+
+# Restart after config change
+systemctl restart openrouter-proxy
+
+# Live logs
+journalctl -u openrouter-proxy -f
+```
+
+### Swapping providers
+
+To revert to direct Anthropic API:
+
+1. In Coolify, on app `ihe84uqp2yr5bu9wd43w34dq`:
+   - Set `ANTHROPIC_API_KEY` to your Anthropic key (`sk-ant-...`)
+   - Delete or unset `ANTHROPIC_BASE_URL`
+2. Restart paperclipai via Coolify.
+
+To swap to a different OpenRouter key:
+
+1. Update `OPENROUTER_API_KEY` in `/etc/systemd/system/openrouter-proxy.service`
+2. `systemctl daemon-reload && systemctl restart openrouter-proxy`
+3. Update `ANTHROPIC_API_KEY` in Coolify to the new key and restart paperclipai.
+
+### Cost expectations
+
+- OpenRouter markup: ~5% over Anthropic list pricing
+- Benefit: single key, multi-provider fallback, routing flexibility (can add `openai/gpt-*`
+  or `google/gemini-*` agents without separate accounts)
+- OpenRouter model names use `anthropic/claude-sonnet-4.6` format; the proxy uses
+  `claude-sonnet-4-6` (Anthropic short form) because it strips the `anthropic-beta` headers
+  that break OpenRouter routing, and OpenRouter accepts short model names in `/messages`.
