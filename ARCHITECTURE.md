@@ -35,10 +35,12 @@ paperclip tracks all state. Workers are stateless consumers of the issue queue. 
 |------|----------|--------|---------|
 | A | paperclip + OpenRouter (native LLM call) | Live | Planning, reasoning, decisions |
 | B | OpenClaw via external worker (`openclaw-worker`) | Live — verified Phase 3B | Headless code execution (default) |
-| B-alt | OpenCode with Anthropic model (paperclip native adapter) | Live — verified Phase 3C | Vendor-neutral fallback; uses `ANTHROPIC_BASE_URL` |
-| B-alt | OpenCode with `openai/*` model via OpenRouter | **Dropped** — structural blocker; see `RUNBOOK.md §4` | OpenCode routes `openai/*` to Responses API; OpenRouter's impl is unstable. `opencode/*` preset models work. |
+| B-alt | OpenCode + `anthropic/` model (paperclip native adapter) | Live — verified Phase 3C | Production code execution; `opencode-agent` uses `claude-sonnet-4-6` |
+| B-alt | OpenCode + `opencode/` preset model (paperclip native adapter) | Live — verified 2026-04-28 | Free-tier / housekeeping; `opencode-free-agent` uses `nemotron-3-super-free`, $0.00/run |
 | B-alt | Claude Code (paperclip native adapter) | Available, not yet configured | Anthropic-tuned tasks, exploratory |
 | D | Claude CLI on host | Non-canonical | Human-driven exploration only |
+
+**OpenCode model prefix determines API routing** — `anthropic/` and `opencode/` both work via OpenRouter; `openai/` is structurally broken (Responses API). See `RUNBOOK.md §4`.
 
 **NOTE on issue→PR work:** This runs through Path B (OpenClaw worker) with a PR-tuned system prompt on the assigned agent. There is no separate "Path C" executor for PR automation. Specialized PR workflow is a system prompt configuration, not an architectural component. The prior "Holon worker" idea was dropped — see `ROADMAP.md`.
 
@@ -86,6 +88,8 @@ paperclip is multi-tenant. All entities live inside its embedded PostgreSQL (por
 | Agent | UUID |
 |-------|------|
 | openclaw-agent | `e3e191c3-b7d4-4d2d-bfe4-2709db3b76a2` |
+| opencode-agent | `0930e444-c1f1-43ee-9b10-98e67b3daa44` |
+| opencode-free-agent | `513f5d7f-aba3-43fe-9d97-25a22fb3cc2e` |
 
 ---
 
@@ -133,7 +137,7 @@ https://openrouter.ai/api/v1/messages
 
 **OpenRouter model names:** Use `anthropic/claude-sonnet-4-6` in `openclaw.json`. OpenRouter accepts Anthropic short-form names (`claude-sonnet-4-6`) in the messages API too.
 
-**Cost:** ~5% markup over Anthropic list pricing. Single key for all agents; routing flexibility (can add `openai/gpt-*` or `google/gemini-*` without new accounts).
+**Cost:** ~5% markup over Anthropic list pricing. Single key for `anthropic/*` and `opencode/*` models. `openai/*` models via OpenCode are not viable — see `RUNBOOK.md §4` for the prefix routing rule.
 
 ---
 
@@ -143,3 +147,4 @@ https://openrouter.ai/api/v1/messages
 - Not a roadmap — see `ROADMAP.md`.
 - Not a historical record of the pivot — see `PIVOT_TO_PAPERCLIP.md`.
 - Not a reference for the old FastAPI brain — see git history pre-commit `684694f`.
+- Not a reference for OpenCode model routing behavior — see `RUNBOOK.md §4` for the prefix routing rule (`anthropic/` vs `opencode/` vs `openai/`).
