@@ -150,7 +150,7 @@ Key values stored in your secrets manager. Never in git.
 ### Current provider: OpenRouter
 
 All Claude CLI invocations from the paperclipai container route through OpenRouter's
-Anthropic-compatible endpoint via a thin proxy running on the host VPS.
+Anthropic-compatible endpoint via the `openrouter-proxy` Coolify container.
 
 **Why a proxy?** The Claude Code CLI v2.1.119 sends `POST /v1/messages?beta=true` with
 `anthropic-beta` headers containing Claude-specific beta feature flags. OpenRouter's
@@ -160,47 +160,46 @@ forwarding.
 ### How it works
 
 ```
-claude CLI → ANTHROPIC_BASE_URL → http://10.0.1.1:4001 (openrouter-proxy)
+claude CLI → ANTHROPIC_BASE_URL → http://openrouter-proxy:4001 (Coolify container)
                                            ↓
                           POST https://openrouter.ai/api/v1/messages
                           Authorization: Bearer <OPENROUTER_API_KEY>
 ```
 
-The proxy (`/opt/openrouter-proxy/proxy.py`) runs as a systemd service:
+The proxy (`proxy/openrouter-proxy/proxy.py` in this repo) runs as a Coolify container
+(`scc2ob001qhs6d16voewfy0r`) on the `coolify` Docker network with alias `openrouter-proxy`:
 - Strips `?beta=true` and Anthropic-specific headers (`anthropic-beta`, `anthropic-version`, etc.)
 - Forwards only `Content-Type` and `Authorization: Bearer <key>` to OpenRouter
 - Handles `GET /models/*` with a fake 200 response so the CLI doesn't abort on model lookup
+- `traefik.enable=false` — internal-only, no public route
 
-### Env vars (set in Coolify on app `ihe84uqp2yr5bu9wd43w34dq`)
+### Env vars
+
+**paperclipai** (`ihe84uqp2yr5bu9wd43w34dq`):
 
 | Variable | Value | Purpose |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | `sk-or-v1-***` | OpenRouter API key (never commit) |
-| `ANTHROPIC_BASE_URL` | `http://10.0.1.1:4001` | Points claude CLI at the proxy |
+| `ANTHROPIC_BASE_URL` | `http://openrouter-proxy:4001` | Points claude CLI at the proxy |
 
-The proxy reads `OPENROUTER_API_KEY` from its systemd `Environment=` directive in
-`/etc/systemd/system/openrouter-proxy.service`.
+**openrouter-proxy** (`scc2ob001qhs6d16voewfy0r`):
 
-### Firewall rule (persisted via ufw + iptables-save)
-
-```bash
-ufw allow from 10.0.0.0/8 to any port 4001 proto tcp comment "openrouter-proxy docker"
-```
-
-Docker container traffic uses the host gateway `10.0.1.1` to reach the proxy.
+| Variable | Purpose |
+|---|---|
+| `OPENROUTER_API_KEY` | OpenRouter API key — set in Coolify, never in source |
 
 ### Proxy management
 
 ```bash
-# Status
-systemctl status openrouter-proxy
+# View logs
+docker logs $(docker ps -q --filter name=scc2ob001qhs6d16voewfy0r) --tail 50
 
-# Restart after config change
-systemctl restart openrouter-proxy
-
-# Live logs
-journalctl -u openrouter-proxy -f
+# Restart
+docker restart $(docker ps -q --filter name=scc2ob001qhs6d16voewfy0r)
 ```
+
+To update proxy logic: edit `proxy/openrouter-proxy/proxy.py` and `git push origin main`.
+Coolify auto-deploys on push.
 
 ### Swapping providers
 
@@ -213,9 +212,9 @@ To revert to direct Anthropic API:
 
 To swap to a different OpenRouter key:
 
-1. Update `OPENROUTER_API_KEY` in `/etc/systemd/system/openrouter-proxy.service`
-2. `systemctl daemon-reload && systemctl restart openrouter-proxy`
-3. Update `ANTHROPIC_API_KEY` in Coolify to the new key and restart paperclipai.
+1. In Coolify, on app `scc2ob001qhs6d16voewfy0r`: update `OPENROUTER_API_KEY`.
+2. Restart the proxy container.
+3. Update `ANTHROPIC_API_KEY` on app `ihe84uqp2yr5bu9wd43w34dq` to the new key and restart paperclipai.
 
 ### Cost expectations
 
