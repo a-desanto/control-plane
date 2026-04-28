@@ -9,14 +9,20 @@ For ops procedures, see `RUNBOOK.md`.
 
 ## Phase 3C — Enable OpenCode native adapter ✓ DONE
 
-**Status:** Complete (2026-04-28). OpenCode (`opencode-agent`) is live and verified.
+**Status:** Complete (2026-04-28). Two OpenCode agents live and verified:
 
-- Adapter type: `OpenCode (local)`, using `anthropic/claude-sonnet-4-6` via `ANTHROPIC_BASE_URL=http://openrouter-proxy:4001`
-- Smoke test CAR-6 completed: exitCode 0, $0.077, billed via OpenRouter
-- No new containers — paperclip's heartbeat drives execution directly
-- `codex-agent` was created and deleted: see "Explicitly dropped" section below
+- `opencode-agent` — `anthropic/claude-sonnet-4-6` via `ANTHROPIC_BASE_URL=http://openrouter-proxy:4001`
+  - Smoke test CAR-6: exitCode 0, $0.077, billed via OpenRouter
+  - Production-quality; use for real code execution tasks
+- `opencode-free-agent` — `opencode/nemotron-3-super-free` via OpenRouter Chat Completions
+  - Smoke test CAR-13: exitCode 0, $0.00, ~15 steps (more verbose than Claude Sonnet)
+  - Free-tier only; use for housekeeping, triage, dev/test — not production code work
 
-**OpenAI-via-OpenCode path explicitly dropped** — see `RUNBOOK.md §4` and "Explicitly dropped" section below.
+No new containers required — paperclip's heartbeat drives execution directly for both.
+
+**Key finding:** OpenCode's model prefix determines API routing, not the model name. `anthropic/`
+and `opencode/` both work via OpenRouter. `openai/` is structurally broken — see `RUNBOOK.md §4`
+and "Explicitly dropped" section below.
 
 ---
 
@@ -58,14 +64,21 @@ Coolify → Add Server → apply template → set per-client env vars
 
 ## Explicitly dropped
 
-**OpenAI via OpenCode (all variants):** Dropped 2026-04-28. Two attempts, same structural root:
+**OpenAI via OpenCode through OpenRouter — structurally blocked by Responses API routing.**
+Two attempts, same root cause: OpenCode's `openai/` prefix unconditionally routes to Responses
+API. OpenRouter does not implement it stably.
 
-- *Codex CLI (attempt 1):* The `codex` binary (v0.125.0) hardcodes `wss://api.openai.com/v1/responses` (WebSocket Responses API). `OPENAI_BASE_URL` only redirects REST. Result: `codex-agent` exits 1 with `401 Unauthorized` on every heartbeat run.
-- *OpenCode + `openai/gpt-4.1` (attempt 2):* OpenCode routes all `openai/*` models to OpenRouter's Responses API REST endpoint (`/api/v1/responses`). OpenRouter's Responses API implementation is unstable; requests fail with Zod validation errors. The Chat Completions path is never taken for `openai/*` models regardless of which model is selected.
+- *Codex CLI (attempt 1):* hardcodes `wss://api.openai.com/v1/responses` (WebSocket).
+  Cannot redirect via `OPENAI_BASE_URL`. `codex-agent` exits 1 with `401 Unauthorized`.
+- *OpenCode + `openai/gpt-4.1` (attempt 2):* routes to `openrouter.ai/api/v1/responses`
+  (REST). Fails with Zod validation errors. Model selection (`gpt-4.1`, `gpt-4o`, etc.)
+  is irrelevant — the prefix determines the path, not the model name.
 
-`codex-agent` and `opencode-openai-agent` both deleted. `OPENAI_BASE_URL` / `OPENAI_API_KEY` removed from paperclipai env.
+`codex-agent` and `opencode-openai-agent` both deleted 2026-04-28. `OPENAI_BASE_URL` /
+`OPENAI_API_KEY` removed from paperclipai env.
 
-Re-evaluate if: (a) OpenCode adds a `--provider chat-completions` flag or equivalent, OR (b) OpenRouter stabilizes Responses API parity. Direct OpenAI account (Option B) requires explicit approval before implementing — see `RUNBOOK.md §4`.
+Workaround would require a direct OpenAI billing relationship (separate account, separate
+key rotation per VPS). Requires explicit approval before implementing — see `RUNBOOK.md §4`.
 
 ---
 

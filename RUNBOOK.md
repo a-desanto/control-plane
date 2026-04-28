@@ -242,48 +242,64 @@ not needed there and would silently break beta features.**
 always pass the company UUID (`bd80728d-6755-4b63-a9b9-c0e24526c820`) in API paths — never
 the URL slug (`CAR`).
 
-### Anti-pattern: OpenAI models via OpenCode through OpenRouter
+### OpenCode model prefix routing
 
-**Do not attempt this.** Two attempts, two structural failures at different layers.
+The model prefix in OpenCode determines which API path is used, not just which provider:
 
-**Failure 1 — Codex CLI (2026-04-28):**
-The `codex` binary (v0.125.0) uses OpenAI's Responses API exclusively via WebSocket
-(`wss://api.openai.com/v1/responses`). `OPENAI_BASE_URL` only redirects REST calls —
-WebSocket connections are hardcoded to `api.openai.com`. OpenRouter does not implement
-the Responses API WebSocket protocol. Every heartbeat exits 1 with:
-```
-401 Unauthorized: Missing bearer or basic authentication in header
-url: https://api.openai.com/v1/responses
-```
+| Prefix | API path | OpenRouter compat |
+|---|---|---|
+| `anthropic/` | OpenCode's Anthropic provider → Messages API | ✓ verified (`opencode-agent` runs `claude-sonnet-4-6`) |
+| `opencode/` | OpenCode's preset catalog → Chat Completions | ✓ verified (`opencode-free-agent` runs `nemotron-3-super-free`) |
+| `openai/` | OpenCode defers to OpenAI SDK → Responses API | ✗ broken (Codex, `gpt-4.1`, `gpt-5` all fail) |
 
-**Failure 2 — OpenCode CLI with `openai/gpt-4.1` (2026-04-28):**
-OpenCode routes all `openai/*` models to OpenRouter's REST Responses API endpoint
-(`POST https://openrouter.ai/api/v1/responses`). OpenRouter's Responses API
-implementation is unstable — the request fails with Zod validation errors:
-```
-{"error":{"code":"invalid_prompt","message":"Invalid Responses API request"},
- "metadata":{"url":"https://openrouter.ai/api/v1/responses"}}
-```
-The Chat Completions path (`/api/v1/chat/completions`), which OpenRouter implements
-stably, is **never taken** for `openai/*` models in OpenCode. Model selection
-(`gpt-4.1`, `gpt-4o`, `gpt-5`, etc.) does not change this — all `openai/*` models
-hit the same broken path.
+For OpenAI capability via OpenCode + OpenRouter:
+- Not currently possible. OpenCode's `openai/` prefix unconditionally uses Responses API.
+- Fix would require either: OpenCode adding a chat-completions flag, OpenRouter stabilizing
+  Responses API, or OpenCode exposing GPT-class models under the `opencode/` prefix.
+- Workaround for OpenAI access: configure direct OpenAI account (separate billing, separate
+  key — requires explicit decision before implementing).
 
-**Root cause:** OpenCode's `openai` provider hardcodes the Responses API. The `opencode/`
-prefix models (e.g. `opencode/nemotron-3-super-free`) use a different internal path that
-goes through Chat Completions and does work via OpenRouter.
+Evidence for the broken `openai/` path (two attempts, 2026-04-28):
 
-**Confirmed working via OpenRouter:** `anthropic/*` models (claude-sonnet-4-6, etc.)
-and `opencode/*` preset models.
+- **Codex CLI:** The `codex` binary hardcodes `wss://api.openai.com/v1/responses`
+  (WebSocket Responses API). `OPENAI_BASE_URL` only redirects REST — WebSocket is
+  hardcoded to `api.openai.com`. Exits 1 with `401 Unauthorized`.
+- **OpenCode + `openai/gpt-4.1`:** Routes to `https://openrouter.ai/api/v1/responses`
+  (REST Responses API). OpenRouter's impl fails with Zod validation errors on the request
+  schema. Changing the model name (`gpt-4o`, `gpt-5`, etc.) does not help — the routing
+  decision is made by the prefix, not the model.
 
-**If OpenAI capability becomes truly required:**
-- Wait for OpenRouter to stabilize Responses API parity, OR
-- Wait for OpenCode to support a `--provider chat-completions` flag or equivalent, OR
-- Accept a separate direct OpenAI account (two billing dashboards, two keys, two
-  rotation procedures per VPS) — requires explicit decision before implementing.
-
-**OPENAI_BASE_URL / OPENAI_API_KEY** are not set on paperclipai and must not be added
+**`OPENAI_BASE_URL` / `OPENAI_API_KEY` are not set on paperclipai** and must not be added
 without a verified working path. `opencode-openai-agent` was deleted 2026-04-28.
+
+### opencode-free-agent operational notes
+
+`opencode-free-agent` (`513f5d7f-aba3-43fe-9d97-25a22fb3cc2e`) uses
+`opencode/nemotron-3-super-free` — a free-tier Llama 70B model via OpenCode's preset
+catalog. Verified working 2026-04-28 (CAR-13, exitCode 0, $0.00, billed via OpenRouter).
+
+**Appropriate uses:**
+- Low-stakes housekeeping: status sweeps, issue closing, comment drafts
+- Triage: routing, labelling, duplicate detection
+- Dev/test: validating pipeline mechanics without burning quota
+
+**Avoid:**
+- Production code execution
+- Multi-step reasoning tasks or anything requiring consistent API protocol adherence
+- Customer-facing output
+
+**Quality benchmark (CAR-13 vs opencode-agent equivalent):**
+
+| Metric | `opencode-free-agent` (nemotron) | `opencode-agent` (claude-sonnet-4-6) |
+|---|---|---|
+| Steps to complete "echo a string" | ~15 | ~3–5 |
+| API call errors before success | 3 (validation + checkout conflict) | 0 |
+| Total tokens billed | 312K input cumulative | ~50–80K estimated |
+| Cost | $0.00 | ~$0.08 |
+| Cache hits | 0 | Benefits from caching |
+
+The model recovers from errors correctly — it's not unreliable, it's verbose. For zero-cost
+housekeeping where a 2-minute runtime is acceptable, it's a valid option.
 
 ### Cost expectations
 
