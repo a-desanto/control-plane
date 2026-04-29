@@ -555,3 +555,148 @@ curl -sf -H "Authorization: Bearer <token>" \
 docker exec ihe84uqp2yr5bu9wd43w34dq-103207382226 \
   find /paperclip/instances/default/data/backups -name '*.sql.gz' | wc -l
 ```
+
+---
+
+## §8 Watchdog and kill-switch
+
+Container `cfpa-watchdog` (source: `workers/cfpa-watchdog/`) polls paperclip's cost API every
+60 seconds. If any agent's rolling-window spend exceeds a threshold it pauses the agent
+immediately and fires a Discord alert. The pause is manual-resume-only — the watchdog never
+auto-resumes.
+
+### What it does
+
+Each cycle the watchdog:
+1. Fetches all non-paused, non-terminated agents.
+2. Queries `GET /api/companies/:id/costs/by-agent?from=ISO&to=ISO` for three rolling windows
+   simultaneously (1 min, 5 min, 60 min). This endpoint returns **true windowed spend** —
+   verified 2026-04-29 (Phase 4): `opencode-agent` had $3.58 in the 60-minute window and
+   triggered immediately; the query is not lifetime spend.
+3. Checks each agent against per-window thresholds. On first breach:
+   - `POST /api/agents/:id/pause`
+   - Posts Discord alert (see format below)
+   - Marks agent in in-memory set; skips it for remaining cycles until restart
+4. Pings healthchecks.io so you know the watchdog process itself is alive.
+
+### Default thresholds
+
+| Window | Env var | Default |
+|--------|---------|---------|
+| 1 minute | `PER_MINUTE_MAX_USD` | $1.00 |
+| 5 minutes | `PER_5MIN_MAX_USD` | $3.00 |
+| 60 minutes | `PER_HOUR_MAX_USD` | $8.00 |
+
+### Per-agent threshold overrides
+
+Raise limits for agents that legitimately spend more (e.g. CEO during planning week):
+
+```bash
+WATCHDOG_AGENT_<UUID>_PER_HOUR_MAX_USD=20
+WATCHDOG_AGENT_<UUID>_PER_5MIN_MAX_USD=10
+WATCHDOG_AGENT_<UUID>_PER_MINUTE_MAX_USD=5
+```
+
+All three suffixes are supported. Unset suffixes fall back to the global defaults. Override
+takes effect on the next cycle after container restart.
+
+### Discord alert format
+
+```
+🚨 **Agent paused by watchdog**
+**Agent:** opencode-agent (`0930e444-c1f1-43ee-9b10-98e67b3daa44`)
+**Threshold breached:** $0.10 per 1 hour
+**Actual spend:** $3.5800 in last 1 hour
+**Next step:** Investigate in paperclip, then resume via `POST /api/agents/0930e444.../resume` or the UI.
+```
+
+### Re-enabling a watchdog-paused agent
+
+1. Investigate the cause in paperclip's heartbeat run log.
+2. Resume: `POST /api/agents/<id>/resume` (board auth) or via paperclip UI.
+3. The watchdog respects the resumed state — it does not re-pause until a new threshold breach.
+4. If the watchdog is still running (not restarted), the in-memory `_paused_by_watchdog` dict
+   retains the entry until the watchdog detects the agent in the active list on the next cycle,
+   at which point it logs `agent_manually_resumed` and removes it from the dict.
+
+### Raising a threshold without redeploying
+
+The thresholds are read from env vars at startup. To change them you must restart the container:
+
+```bash
+docker rm -f cfpa-watchdog && docker run -d \
+  --name cfpa-watchdog \
+  --restart always \
+  --network coolify \
+  -e PAPERCLIP_API_URL=https://paperclipai.cfpa.sekuirtek.com \
+  -e PAPERCLIP_API_KEY=<key — stored in your secrets manager, never commit> \
+  -e PAPERCLIP_COMPANY_ID=bd80728d-6755-4b63-a9b9-c0e24526c820 \
+  -e DISCORD_WEBHOOK_URL=<webhook — stored in your secrets manager> \
+  -e HEALTHCHECK_PING_URL=https://hc-ping.com/16de3dc6-a900-4609-bbaa-230a500ea19b \
+  -e PER_HOUR_MAX_USD=20.00 \
+  cfpa-watchdog:latest
+```
+
+### Disabling the watchdog entirely
+
+```bash
+docker stop cfpa-watchdog
+```
+
+The container has `--restart always`, so stopping it is temporary (it restarts on next VPS
+boot). To permanently disable: `docker rm -f cfpa-watchdog`. Recreate from the command above.
+
+### Observability
+
+```bash
+# Live logs (structured JSON, one line per event):
+docker logs cfpa-watchdog -f
+
+# Last cycle summary:
+docker logs cfpa-watchdog 2>&1 | grep cycle_complete | tail -1
+
+# All threshold breaches:
+docker logs cfpa-watchdog 2>&1 | grep threshold_breached
+```
+
+Healthcheck: https://hc-ping.com/16de3dc6-a900-4609-bbaa-230a500ea19b
+(schedule `*/1 * * * *`, grace 5 min — pings every 60s on a clean cycle)
+
+### Restart behaviour
+
+On restart the watchdog does a startup scan of all agents and logs how many are already paused,
+but it does NOT add pre-paused agents to its in-memory set. This is intentional: if the
+watchdog was the one that paused them before the restart, a human should have reviewed and
+resumed them. Agents left paused across a watchdog restart require explicit manual review.
+
+### API key
+
+The watchdog uses board key `cfpa-watchdog` (key ID `051066b3-98c9-4e84-b4be-74562d2b1d75`,
+user ID `5iqq34wPV9id6soJWlrBsTY2eWMsQaHk`). Key value stored in your secrets manager —
+never in git. To revoke:
+
+```bash
+docker exec <paperclip-container> node -e "
+const { Client } = require('/app/node_modules/.pnpm/pg@8.18.0/node_modules/pg');
+const c = new Client({host:'127.0.0.1',port:54329,user:'paperclip',password:'paperclip',database:'paperclip'});
+c.connect()
+  .then(() => c.query('UPDATE board_api_keys SET revoked_at=NOW() WHERE id=\$1',
+                       ['051066b3-98c9-4e84-b4be-74562d2b1d75']))
+  .then(() => { console.log('revoked'); c.end(); })
+  .catch(e => { console.error(e.message); c.end(); });
+"
+```
+
+### Phase 4 verification summary (2026-04-29)
+
+**Scenario fired:** Windowed spend — real data, no synthetic issue needed.
+
+- `opencode-agent` had **$3.58** in the 60-minute window (real prior spend).
+- Triggered on the **first cycle** at `PER_HOUR_MAX_USD=0.10`.
+- Agent paused, Discord alert delivered, healthcheck pinged.
+- Thresholds reset to defaults; agent resumed via API.
+- Next cycle: all 5 agents active, 0 paused — watchdog did not re-pause.
+
+**Key finding:** `costs/by-agent` returns genuine rolling-window spend, not lifetime totals.
+The 60-minute threshold is the most likely to trigger in practice for a busy agent. The
+1-minute and 5-minute thresholds guard against sudden bursts (e.g. a runaway loop).
