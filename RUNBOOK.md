@@ -412,3 +412,146 @@ at 02:10:52 UTC cost $0.62 and closed the issue.
   adapter first, not after noticing cost on the OpenRouter dashboard.
 - To prevent CEO interference while debugging an adapter: temporarily turn off heartbeat on
   the CEO agent in paperclip's UI.
+
+---
+
+## §6 Disaster recovery
+
+### Backup runner
+
+Container `cfpa-backup-runner` runs `backup.sh` daily at 03:00 UTC. Dumps all 8 Postgres
+instances in `-Fc` format to `r2:cfpa-backups/daily/YYYY-MM-DD/`. Retention: 7 daily,
+4 weekly (Sundays), 3 monthly (1st of month).
+
+**Check backup health:**
+```bash
+docker logs cfpa-backup-runner --tail 20
+# healthcheck at https://hc-ping.com (check hc-ping.com dashboard for last ping)
+```
+
+**Manual run:**
+```bash
+docker exec cfpa-backup-runner /usr/local/bin/backup.sh
+```
+
+**Container restart after VPS reboot:** handled by `--restart always` on the Docker container.
+
+**After a Coolify redeploy of odoo-r147, odoo-qa3, or gwsw** (these live on isolated service
+networks), re-run the network connect commands:
+```bash
+docker network connect coolify postgresql-r147p2dhkmafaco58b5boxwo
+docker network connect coolify postgresql-qa3ernlh747z79f6o5wpmoem
+docker network connect coolify postgresql-gwsw0wcc0co44088swwgkooc
+```
+
+**After any paperclip redeploy**, verify port 54329 is still network-accessible:
+```bash
+docker exec cfpa-backup-runner pg_isready -h paperclip -p 54329
+```
+If it fails: paperclip's `postgresql.conf` and `pg_hba.conf` may have been regenerated from
+defaults (blank listen_addresses). Re-apply the settings in
+`/paperclip/instances/default/db/` and restart paperclip. See §6.1 below.
+
+### §6.1 Re-applying paperclip Postgres network access
+
+paperclip's embedded Postgres must be configured to accept Docker-network connections:
+
+1. Edit `/paperclip/instances/default/db/postgresql.conf` — ensure this line is active (not commented):
+   ```
+   listen_addresses = '*'
+   ```
+2. Edit `/paperclip/instances/default/db/pg_hba.conf` — add after the IPv4 local block:
+   ```
+   # Docker coolify network (backup runner):
+   host    all             all             10.0.1.0/24             password
+   ```
+3. Fix file ownership (the postgres process runs as UID 1000 / `ubuntu` on host):
+   ```bash
+   chown ubuntu:ubuntu /paperclip/instances/default/db/postgresql.conf \
+                       /paperclip/instances/default/db/pg_hba.conf
+   ```
+4. `docker restart <paperclip-container-id>` (brief ~5s downtime).
+
+### §6.2 Restore procedure
+
+```bash
+# Download a dump from R2 (using the backup runner):
+docker exec cfpa-backup-runner rclone copy \
+  r2:cfpa-backups/daily/YYYY-MM-DD/paperclip.pgdump /tmp/
+
+# Create throwaway DB and restore:
+docker exec cfpa-backup-runner sh -c "
+  PGPASSWORD=\$PAPERCLIP_PG_PASSWORD psql -h paperclip -p 54329 -U paperclip paperclip \
+    -c 'CREATE DATABASE restore_test;'
+  docker cp cfpa-backup-runner:/tmp/paperclip.pgdump /tmp/restore.pgdump
+"
+# (then pg_restore as shown in backups/runner/README.md)
+
+# Verify row counts match production before promoting.
+# Drop throwaway: DROP DATABASE restore_test;
+```
+
+Restore is tested — Phase 4 smoke test (2026-04-29) confirmed full paperclip dump
+restores cleanly with correct row counts (1156 heartbeat_run_events, 13 issues, etc.).
+
+---
+
+## §7 Day-1 hardening
+
+Configured 2026-04-29. Both items are live and verified.
+
+### §7.1 Coolify Discord notifications
+
+Discord webhook configured for team_id=0 in `discord_notification_settings` (coolify-db).
+The webhook URL is stored Laravel-encrypted (AES-256-CBC) — it is NOT in this repo.
+
+**Enabled triggers:**
+
+| Event | Column | Notes |
+|---|---|---|
+| Deployment success | `deployment_success_discord_notifications` | Verified: message received in Discord |
+| Deployment failure | `deployment_failure_discord_notifications` | |
+| Container stopped / restarted | `status_change_discord_notifications` | Maps to `ContainerStopped` + `ContainerRestarted` |
+| Server unreachable | `server_unreachable_discord_notifications` | |
+| Scheduled task failure | `scheduled_task_failure_discord_notifications` | |
+
+**To change webhook URL** (e.g. rotating the Discord webhook):
+```bash
+docker exec -i coolify php artisan tinker --no-interaction << TINKER
+\$s = \App\Models\DiscordNotificationSettings::where('team_id', 0)->first();
+\$s->discord_webhook_url = 'https://discord.com/api/webhooks/NEW_URL';
+\$s->save();
+echo strlen(\$s->discord_webhook_url) . "\n";
+TINKER
+```
+Must use the Eloquent model — direct SQL will store plaintext which Coolify cannot decrypt.
+
+**To disable all Discord notifications:**
+```bash
+docker exec coolify-db psql -U coolify -d coolify -c \
+  "UPDATE discord_notification_settings SET discord_enabled = false WHERE team_id = 0;"
+```
+
+### §7.2 paperclip local backup rotation
+
+Coolify scheduled task `paperclip-local-backup-cleanup` (UUID: `tql16206jv2no4mqhavrnihg`) runs at `0 4 * * *` UTC inside the paperclipai container:
+
+```
+find /paperclip/instances/default/data/backups -name '*.sql.gz' -mtime +1 -delete
+```
+
+paperclip writes hourly `.sql.gz` snapshots. The task keeps only the most recent ~24h of local files; anything older is deleted. Off-VPS coverage (the canonical source for older data) is provided by `cfpa-backup-runner` at 03:00 UTC (§6).
+
+**One-time recovery (2026-04-29):** 120 files deleted, 391 MB freed (406 MB → 15 MB).
+**Going forward:** ~24 files/day accumulate, pruned daily — net disk impact near zero.
+
+**To verify task history:**
+```bash
+# Via Coolify API:
+curl -sf -H "Authorization: Bearer <token>" \
+  http://localhost:8000/api/v1/applications/ihe84uqp2yr5bu9wd43w34dq/scheduled-tasks/tql16206jv2no4mqhavrnihg/executions
+
+# Or check directly:
+docker exec ihe84uqp2yr5bu9wd43w34dq-103207382226 \
+  find /paperclip/instances/default/data/backups -name '*.sql.gz' | wc -l
+```
