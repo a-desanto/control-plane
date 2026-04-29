@@ -412,3 +412,84 @@ at 02:10:52 UTC cost $0.62 and closed the issue.
   adapter first, not after noticing cost on the OpenRouter dashboard.
 - To prevent CEO interference while debugging an adapter: temporarily turn off heartbeat on
   the CEO agent in paperclip's UI.
+
+---
+
+## §6 Disaster recovery
+
+### Backup runner
+
+Container `cfpa-backup-runner` runs `backup.sh` daily at 03:00 UTC. Dumps all 8 Postgres
+instances in `-Fc` format to `r2:cfpa-backups/daily/YYYY-MM-DD/`. Retention: 7 daily,
+4 weekly (Sundays), 3 monthly (1st of month).
+
+**Check backup health:**
+```bash
+docker logs cfpa-backup-runner --tail 20
+# healthcheck at https://hc-ping.com (check hc-ping.com dashboard for last ping)
+```
+
+**Manual run:**
+```bash
+docker exec cfpa-backup-runner /usr/local/bin/backup.sh
+```
+
+**Container restart after VPS reboot:** handled by `--restart always` on the Docker container.
+
+**After a Coolify redeploy of odoo-r147, odoo-qa3, or gwsw** (these live on isolated service
+networks), re-run the network connect commands:
+```bash
+docker network connect coolify postgresql-r147p2dhkmafaco58b5boxwo
+docker network connect coolify postgresql-qa3ernlh747z79f6o5wpmoem
+docker network connect coolify postgresql-gwsw0wcc0co44088swwgkooc
+```
+
+**After any paperclip redeploy**, verify port 54329 is still network-accessible:
+```bash
+docker exec cfpa-backup-runner pg_isready -h paperclip -p 54329
+```
+If it fails: paperclip's `postgresql.conf` and `pg_hba.conf` may have been regenerated from
+defaults (blank listen_addresses). Re-apply the settings in
+`/paperclip/instances/default/db/` and restart paperclip. See §6.1 below.
+
+### §6.1 Re-applying paperclip Postgres network access
+
+paperclip's embedded Postgres must be configured to accept Docker-network connections:
+
+1. Edit `/paperclip/instances/default/db/postgresql.conf` — ensure this line is active (not commented):
+   ```
+   listen_addresses = '*'
+   ```
+2. Edit `/paperclip/instances/default/db/pg_hba.conf` — add after the IPv4 local block:
+   ```
+   # Docker coolify network (backup runner):
+   host    all             all             10.0.1.0/24             password
+   ```
+3. Fix file ownership (the postgres process runs as UID 1000 / `ubuntu` on host):
+   ```bash
+   chown ubuntu:ubuntu /paperclip/instances/default/db/postgresql.conf \
+                       /paperclip/instances/default/db/pg_hba.conf
+   ```
+4. `docker restart <paperclip-container-id>` (brief ~5s downtime).
+
+### §6.2 Restore procedure
+
+```bash
+# Download a dump from R2 (using the backup runner):
+docker exec cfpa-backup-runner rclone copy \
+  r2:cfpa-backups/daily/YYYY-MM-DD/paperclip.pgdump /tmp/
+
+# Create throwaway DB and restore:
+docker exec cfpa-backup-runner sh -c "
+  PGPASSWORD=\$PAPERCLIP_PG_PASSWORD psql -h paperclip -p 54329 -U paperclip paperclip \
+    -c 'CREATE DATABASE restore_test;'
+  docker cp cfpa-backup-runner:/tmp/paperclip.pgdump /tmp/restore.pgdump
+"
+# (then pg_restore as shown in backups/runner/README.md)
+
+# Verify row counts match production before promoting.
+# Drop throwaway: DROP DATABASE restore_test;
+```
+
+Restore is tested — Phase 4 smoke test (2026-04-29) confirmed full paperclip dump
+restores cleanly with correct row counts (1156 heartbeat_run_events, 13 issues, etc.).
