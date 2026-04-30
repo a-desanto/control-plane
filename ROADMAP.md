@@ -60,9 +60,101 @@ Coolify → Add Server → apply template → set per-client env vars
 
 ---
 
+## Phase 6 — Knowledge layer (RAG over client data)
+
+**Status:** Not started. **Priority: highest** — this is the single biggest credibility gap for "client's operating system" positioning.
+
+Add per-VPS pgvector store + ingestion worker for client documents (Gmail, Drive, Dropbox, etc.). Expose retrieval as MCP tool `search_client_knowledge(query, scope)`. Per-document ACLs scope which agents see what. Tables: `client_documents`, `client_document_chunks`. Embeddings via Anthropic, OpenAI, or Voyage.
+
+**Acceptance:** new agent in paperclip can install the `client_knowledge` skill and answer "find that contract from 2023" against ingested data, returning citations. Re-ingest is incremental, not full-reindex.
+
+**Open input:** which sources to support in v1 (Gmail/Drive minimum, full ingestion suite later?). Embedding provider. pgvector vs separate vector DB — recommendation: **pgvector**, keep ops simple; revisit at 50M+ chunks per client.
+
+---
+
+## Phase 7 — Browser-use worker (Path C executor)
+
+**Status:** Not started. **Priority: high** — gates any workflow that touches a SaaS tool without an API.
+
+New worker container `browseruse-worker`. Polls paperclip queue same as openclaw-worker. Executes via Anthropic Computer Use, Browser Use library, or a custom Playwright wrapper inside ephemeral Chromium env. Same MCP-style tool surface as existing workers.
+
+**Acceptance:** an agent can complete a task in a SaaS tool that has no API (e.g., book an appointment in a niche scheduling system, file an entry in an industry-specific CRM, submit a form on a state regulator's portal).
+
+**Open input:** Computer Use vs Browser Use vs custom Playwright — evaluate against the actual SMB SaaS tools the first vertical needs to drive.
+
+---
+
+## Phase 8 — Evaluation and regression layer
+
+**Status:** Not started. **Priority: must-do before scaling past 3 clients.**
+
+Langfuse already collects traces. Add Promptfoo or Braintrust for offline eval. Per-workflow regression suites run on sample historical traces every prompt change. CI integration blocks deploys when score drops > 5%.
+
+**Acceptance:** changing a prompt template in `agent_config_revisions` triggers automatic regression run; merge blocked if score drops below threshold. Per-workflow eval coverage > 80% of production traces.
+
+---
+
+## Phase 9 — End-client UI
+
+**Status:** Not started. **Priority: high — required before second client onboards.**
+
+Separate Next.js app per VPS. Scoped to client's workflows. Conversational front door, document drop zone, agent activity feed, calendar view, approval queue, daily digest. Calls paperclipai's REST API via the client's session — no direct DB access. Branded per-client.
+
+**Acceptance:** an SMB owner can log in, drop a document, ask an agent to do something, see what happened, approve a sensitive action — without ever touching paperclipai's operator UI. White-labelable per client.
+
+---
+
+## Phase 10 — Multi-agent collaboration patterns
+
+**Status:** Not started.
+
+Add hierarchical delegation, debate, and review-gate patterns to paperclip's orchestration. Existing `issue_relations` and `issue_approvals` tables already support the data model; the orchestration logic is the missing piece.
+
+**Acceptance:** a workflow can specify "CEO plans, Operator executes, Critic reviews" and the orchestration runs that pattern end-to-end with audit trail. Debate pattern produces a judged decision with reasoning recorded.
+
+---
+
+## Phase 11 — Event-driven wake sources
+
+**Status:** Not started.
+
+Extend `agent_wakeup_requests` with `external_event` source type. n8n webhook payload becomes part of `PAPERCLIP_WAKE_PAYLOAD_JSON`. External events become first-class wake triggers — no polling.
+
+**Acceptance:** an agent assigned to a workflow wakes within 30 seconds of an external event firing, with full event context already in its env. End-to-end latency for "customer emails → agent acts" under 60 seconds.
+
+---
+
+## Phase 12 — Workflow library
+
+**Status:** Not started; **gated on the vertical-vs-horizontal decision** (see open questions).
+
+Ship 5–10 pre-built workflows. Candidate set: lead qualification, invoice processing, support triage, appointment scheduling, contract review, weekly reporting, customer onboarding. Each = paperclip skill bundle + n8n workflow + agent assignments + eval suite.
+
+**Acceptance:** new client onboarding includes "pick 3 workflows" and they're live within 30 minutes of pick. Each shipped workflow has an eval suite (Phase 8) at >80% coverage.
+
+---
+
+## Phase 13 — Voice interface (year 2)
+
+**Status:** Deferred — year 2 priority.
+
+Pipecat or LiveKit + paperclip MCP tool for inbound/outbound calls. Real-time voice models (OpenAI Realtime, Anthropic voice). First 10 clients should be stable on text/document workflows before voice ships.
+
+**Acceptance:** an agent can answer an inbound call, identify the caller, run a workflow (e.g. take an appointment), and post the resulting issue/note back to paperclip. Outbound: an agent can place an outreach call from a campaign workflow.
+
+---
+
 ## Open questions to resolve before scaling beyond one VPS
 
-- **Agent budget tracking:** How do paperclip's per-agent budgets interact with worker-claimed tasks? Verify cost from `openclaw-worker` invocations registers against the `openclaw-agent` budget cap. Check paperclip's billing/cost UI after a few real tasks.
+### Strategic / product
+
+- **Vertical or horizontal?** "Business OS for SMBs" horizontal is hard to win — Microsoft, Notion, Zapier are all there with bigger libraries. "Business OS for [accounting firms / medical practices / law firms / home services / real estate]" is 10x easier because workflows pre-build themselves and the per-VPS isolation story plays even better in compliance-heavy verticals. **Decision needed before Phase 12.**
+- **Pricing tier structure.** Per-VPS monthly is good positioning but flat-fee caps account expansion. Define Starter / Pro / Enterprise tiers — likely gated on workflow count, agent count, or data volume.
+- **Cross-client learning.** Per-VPS isolation prevents pattern learning across clients. Acceptable in v3.3; design a federated or anonymized-pattern-sharing story when fleet hits 10+.
+
+### Operational
+
+- **Agent budget tracking:** How do paperclip's per-agent budgets interact with worker-claimed tasks? Verify cost from `openclaw-worker` invocations registers against the `openclaw-agent` budget cap.
 - **Company portability:** Does paperclip's export feature work cleanly for the openclaw-worker setup, or does each new VPS need manual agent creation + key issuance?
 - **OpenRouter key strategy:** Single shared key across fleet, or per-VPS keys for cost isolation and blast-radius control?
 

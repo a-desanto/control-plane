@@ -2,7 +2,11 @@
 
 ## Status
 
-Live. Last verified: 2026-04-28. Path B (openclaw-worker) and OpenCode native adapter both confirmed working end-to-end (Phase 3B + Phase 3C smoke tests).
+**v3.3 — high-end SMB business OS direction.** This document describes both the live system (sections 1–10, deployed and working) and the target architecture (section "Target architecture (in flight)") that closes the gap to a credible high-end SMB business OS.
+
+Live deployment last verified 2026-04-28: Path B (openclaw-worker) and OpenCode native adapter both confirmed working end-to-end (Phase 3B + Phase 3C smoke tests). Target architecture phases (6–13) tracked in `ROADMAP.md`.
+
+**Positioning:** per-client VPS isolation, paperclip as orchestration brain, MCP-style tool protocol, Coolify-managed fleet. Sold as a managed monthly service — the client's "operating system." Differentiates from horizontal SaaS via data isolation, compliance posture, and verticalized workflow library (vertical pick is an open strategic question).
 
 ---
 
@@ -218,6 +222,74 @@ https://openrouter.ai/api/v1/messages
 **OpenRouter model names:** Use `anthropic/claude-sonnet-4-6` in `openclaw.json`. OpenRouter accepts Anthropic short-form names (`claude-sonnet-4-6`) in the messages API too.
 
 **Cost:** ~5% markup over Anthropic list pricing. Single key for `anthropic/*` and `opencode/*` models. `openai/*` models via OpenCode are not viable — see `RUNBOOK.md §4` for the prefix routing rule.
+
+---
+
+## Target architecture (in flight) — high-end SMB business OS
+
+The sections above describe the live system as of 2026-04-30. This section captures the planned direction — components that close the gap between "capable agentic platform" and "business operating system for SMBs." Each component has a Phase number in `ROADMAP.md` and a concrete tech choice; nothing here is research-grade.
+
+The bar this section is being written to: a sophisticated SMB buyer asking "why you instead of Microsoft Copilot, Notion AI, or Zapier AI" should have a credible, specific answer once these are in place.
+
+### 1. Knowledge layer — RAG over client data (Phase 6)
+
+**Gap:** the live system has no way to answer questions about the client's own documents, email history, contracts, or operational records. Agents reason from short-term context only. For a system positioned as the client's "operating system," this is the single largest credibility hole.
+
+**Target:** per-VPS vector store via **pgvector** (already on Postgres — no new database). An ingestion worker watches client data sources (Gmail, Drive, Dropbox, Box, custom S3) and writes embeddings + chunked content into `client_documents` and `client_document_chunks`. Retrieval is exposed as an MCP tool `search_client_knowledge(query, scope)` that any agent can call. Per-document ACLs enforce which agents can see what.
+
+**Why pgvector vs Qdrant/Weaviate:** simpler ops (one DB), good enough up to ~10M chunks per client, no separate service to back up. Revisit if a client crosses 50M+ chunks.
+
+### 2. Browser-use worker — Path C executor (Phase 7)
+
+**Gap:** `openclaw-worker` is Path B for code execution. Most SMB workflows touch SaaS tools that don't have clean APIs (mid-tier CRMs, scheduling tools, helpdesks, accounting). Agents currently can't drive those.
+
+**Target:** new worker container `browseruse-worker` polling the same paperclip queue, executing tasks via Anthropic Computer Use (or the Browser Use library) inside an ephemeral Chromium env. Same MCP-style tool surface as openclaw-worker. Path C in the execution paths table once shipped.
+
+**Decision pending:** Computer Use vs Browser Use vs a custom Playwright wrapper — evaluate against the actual SaaS tools the first vertical needs to drive.
+
+### 3. Evaluation and regression layer (Phase 8)
+
+**Gap:** every agent prompt change is currently a leap of faith. No regression suite, no offline evals, no replay-based testing. The first big client incident will be unexplainable without this.
+
+**Target:** Langfuse already collects traces. Layer **Promptfoo or Braintrust** on top for offline eval. Per-workflow eval suites run on a sample of historical traces every time the prompt changes. Block prompt deploys when the regression score drops below threshold. CI integration so this fires on every PR touching prompts or skills.
+
+### 4. End-client UI (Phase 9)
+
+**Gap:** paperclipai's UI is an operator console — useful for the operator, useless for the SMB owner. There is no daily-driver interface for the actual client.
+
+**Target:** separate Next.js app per VPS, deployed alongside paperclipai, scoped to the client's workflows. Conversational front door, document drop zone, agent activity feed, calendar view, human-in-the-loop approval queue, "what did my agents do today" digest. Calls paperclipai's REST API via the client's session — no direct DB access. Branded per-client.
+
+### 5. Multi-agent collaboration patterns (Phase 10)
+
+**Gap:** CEO, Operator, and specialist agents exist as separate actors but they're not collaborating on shared tasks. The frontier in 2026 is hierarchical/parallel multi-agent systems with delegation, criticism, and judging.
+
+**Target:** add three patterns to paperclip's agent runtime: hierarchical delegation (CEO plans, specialists execute, judge closes), debate (two agents propose, third judges), review gate (sensitive workflows require critic sign-off). paperclip's `issue_relations` and `issue_approvals` tables already support this; the orchestration logic is the missing piece.
+
+### 6. Event-driven wake sources (Phase 11)
+
+**Gap:** agents wake on `timer` / `assignment` / `on_demand` / `automation`. External events from the client's tools (email arrived, payment failed, calendar invite received, customer texted) are not first-class wake sources — they must be polled by n8n and converted to assignments.
+
+**Target:** treat n8n webhooks as first-class wakes. Extend `agent_wakeup_requests` with `external_event` source type. Webhook payload becomes part of `PAPERCLIP_WAKE_PAYLOAD_JSON` so the agent has full event context on wake without an extra round-trip.
+
+### 7. Workflow library — vertical or horizontal (Phase 12)
+
+**Gap:** SMBs buy outcomes, not infrastructure. The current platform can theoretically do anything; out-of-the-box it does nothing concrete. Each new client today is a custom build.
+
+**Target:** ship a library of pre-built workflows: lead qualification, invoice processing, support triage, appointment scheduling, contract review, weekly reporting, customer onboarding. Each is a paperclip skill bundle + n8n workflow + agent assignments + eval suite. Library depth depends on whether the platform stays horizontal or picks a vertical (open question, see below).
+
+### 8. Voice interface (Phase 13, year 2)
+
+**Gap:** in 2026 voice is the front door for SMB customer interaction. Without it, the platform is a backend, not an OS.
+
+**Target:** **Pipecat or LiveKit** + a paperclip MCP tool that lets agents place outbound calls and answer inbound ones. Real-time voice models (OpenAI Realtime, Anthropic voice). Year-2 priority — defer until first 10 clients are stable on text/document workflows.
+
+### Open strategic questions
+
+These are not architectural decisions; they're product decisions that gate architectural ones.
+
+- **Vertical or horizontal?** "Business OS for SMBs" horizontal is hard to win. "Business OS for [accounting firms / medical practices / law firms / home services / real estate]" is 10x easier because workflows pre-build themselves and per-VPS isolation plays even better in compliance-heavy verticals. Decision needed before Phase 12.
+- **Pricing tier structure.** Per-VPS monthly is good positioning, but flat-fee caps account expansion. Define Starter / Pro / Enterprise tiers gated on workflow count, agent count, or data volume.
+- **Cross-client learning.** Per-VPS isolation prevents pattern learning across clients. Acceptable in v3.3; design a federated-learning story when fleet hits 10+ VPSes.
 
 ---
 
