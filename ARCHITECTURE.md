@@ -2,7 +2,11 @@
 
 ## Status
 
-Live. Last verified: 2026-04-28. Path B (openclaw-worker) and OpenCode native adapter both confirmed working end-to-end (Phase 3B + Phase 3C smoke tests).
+**v3.3 — high-end SMB business OS direction.** This document describes both the live system (sections 1–10, deployed and working) and the target architecture (section "Target architecture (in flight)") that closes the gap to a credible high-end SMB business OS.
+
+Live deployment last verified 2026-04-28: Path B (openclaw-worker) and OpenCode native adapter both confirmed working end-to-end (Phase 3B + Phase 3C smoke tests). Target architecture phases (6–13) tracked in `ROADMAP.md`.
+
+**Positioning:** per-client VPS isolation, paperclip as orchestration brain, MCP-style tool protocol, Coolify-managed fleet. Sold as a managed monthly service — the client's "operating system." Differentiates from horizontal SaaS via data isolation, compliance posture, and verticalized workflow library (vertical pick is an open strategic question).
 
 ---
 
