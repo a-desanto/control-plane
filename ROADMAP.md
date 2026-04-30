@@ -50,6 +50,12 @@ Coolify → Add Server → apply template → set per-client env vars
   → bootstrap company in paperclip → issue first API key → verify health
 ```
 
+**SMB-safe defaults that MUST bake into the template** (lessons from the 2026-04-30 cost runaway — see `RUNBOOK.md §8`):
+
+- New agents ship with `runtime_config.heartbeat.enabled: false`. Agents wake on assignment only until the operator opts into a timer for a specific workflow. The historic upstream default of `enabled: true` + 300s interval is an SMB-hostile setting — idle agents bleed money on no-op heartbeats.
+- cfpa-watchdog ships with `PER_HOUR_MAX_USD=1.00` (not 8.00). Catches slow drips at single-digit dollars instead of $30+.
+- Onboarding flow asks "which agents should currently spend nothing?" and writes per-agent `WATCHDOG_AGENT_<UUID>_PER_HOUR_MAX_USD=0.10` overrides for those.
+
 **Open input:** Decide which optional apps (Flowise, activepieces) belong in the base template vs. added per-client.
 
 ---

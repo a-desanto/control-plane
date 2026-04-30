@@ -581,15 +581,19 @@ Each cycle the watchdog:
 
 ### Default thresholds
 
-| Window | Env var | Default |
-|--------|---------|---------|
-| 1 minute | `PER_MINUTE_MAX_USD` | $1.00 |
-| 5 minutes | `PER_5MIN_MAX_USD` | $3.00 |
-| 60 minutes | `PER_HOUR_MAX_USD` | $8.00 |
+| Window | Env var | Default | Pre-2026-04-30 |
+|--------|---------|---------|----------------|
+| 1 minute | `PER_MINUTE_MAX_USD` | $1.00 | $1.00 |
+| 5 minutes | `PER_5MIN_MAX_USD` | $3.00 | $3.00 |
+| 60 minutes | `PER_HOUR_MAX_USD` | **$1.00** | $8.00 |
+
+**The 60-minute default was tightened from $8.00 to $1.00 on 2026-04-30** after a cost-runaway incident in which idle agents bled $31.30/month at ~$0.34/hour — well below the prior $8/hour threshold so the watchdog never fired. The new default catches a slow drip; the per-window 5-min and 1-min thresholds remain the same since they were already adequate for burst protection. See "Per-agent threshold overrides" below for the matching idle-agent overrides.
 
 ### Per-agent threshold overrides
 
-Raise limits for agents that legitimately spend more (e.g. CEO during planning week):
+Two patterns:
+
+**Pattern A — raise limits for agents that legitimately spend more** (e.g. CEO during planning week):
 
 ```bash
 WATCHDOG_AGENT_<UUID>_PER_HOUR_MAX_USD=20
@@ -597,8 +601,23 @@ WATCHDOG_AGENT_<UUID>_PER_5MIN_MAX_USD=10
 WATCHDOG_AGENT_<UUID>_PER_MINUTE_MAX_USD=5
 ```
 
-All three suffixes are supported. Unset suffixes fall back to the global defaults. Override
-takes effect on the next cycle after container restart.
+**Pattern B — lower limits for agents that should currently spend nothing** (idle by design — most common at onboarding when only one or two agents are active):
+
+```bash
+WATCHDOG_AGENT_<UUID>_PER_HOUR_MAX_USD=0.10
+```
+
+Production overrides on the canonical VPS as of 2026-04-30 (Pattern B):
+
+| Agent | UUID | Per-hour cap |
+|-------|------|--------------|
+| CEO | `535d320c-8eef-4f2c-a3b9-9d94c2f99793` | $0.10 |
+| Operator | `b512de5c-ea5a-4146-8aaa-750bba2846c7` | $0.10 |
+| openclaw-agent | `e3e191c3-b7d4-4d2d-bfe4-2709db3b76a2` | $0.10 |
+| opencode-free-agent | `513f5d7f-aba3-43fe-9d97-25a22fb3cc2e` | $0.10 |
+| opencode-agent | `0930e444-c1f1-43ee-9b10-98e67b3daa44` | (global $1.00 default — may do real work) |
+
+All three suffixes (`PER_MINUTE_MAX_USD`, `PER_5MIN_MAX_USD`, `PER_HOUR_MAX_USD`) are supported. Unset suffixes fall back to the global defaults. Override takes effect on the next cycle after container restart.
 
 ### Discord alert format
 
