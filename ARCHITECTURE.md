@@ -93,6 +93,86 @@ paperclip is multi-tenant. All entities live inside its embedded PostgreSQL (por
 
 ---
 
+## Agent runtime model — heartbeats, memory, skills
+
+paperclip agents do **not** run continuously. Each agent runs in **heartbeats**: short execution windows where the configured adapter (Claude CLI, OpenCode, OpenClaw, etc.) is launched, given prompt + context, runs to completion or timeout, and exits. Continuity across heartbeats is preserved by adapter session IDs and database state — not by a long-lived process.
+
+### Wake sources
+
+An agent wakes via one of four triggers (`docs/agents-runtime.md` in `paperclipai/paperclip`):
+
+| Source | When |
+|--------|------|
+| `timer` | scheduled interval (configurable per agent, e.g. every 5 min) |
+| `assignment` | work assigned/checked out to the agent |
+| `on_demand` | manual wakeup via UI button or API |
+| `automation` | system-triggered (future) |
+
+If a heartbeat is already running when a new wake fires, paperclip **coalesces** the wake — no duplicate runs. Wake context (`PAPERCLIP_WAKE_REASON`, `PAPERCLIP_TASK_ID`, `PAPERCLIP_WAKE_PAYLOAD_JSON`, etc.) is injected as env vars into the adapter process.
+
+### Memory: three layers
+
+Memory in paperclip has three distinct layers, each serving a different purpose:
+
+**1. Adapter session memory (conversational context).** Each resumable adapter (Claude CLI, OpenCode, etc.) has its own native session that persists across heartbeats. paperclip stores the session ID in `agent_runtime_state.session_id`; the next heartbeat re-launches the adapter with `--resume <id>` (or equivalent) so the model's conversation context carries over. Reset via the agent's "session reset" UI control when the agent is stuck or you've changed prompt strategy. **This is where most "agent memory" lives** — it's owned by the adapter, not by paperclip.
+
+**2. Agent runtime state (`agent_runtime_state` table).** One row per agent. Tracks: current `sessionId`, `lastRunId`, `lastRunStatus`, cumulative `totalInputTokens` / `totalOutputTokens` / `totalCachedInputTokens` / `totalCostCents`, `lastError`, free-form `stateJson`. This is paperclip's view of what the adapter did, not the adapter's internal context.
+
+**3. File-based PARA memory (optional, per-agent skill).** Agents that install the `para-memory-files` skill get a structured file system at `$AGENT_HOME/`:
+
+- `$AGENT_HOME/life/` — knowledge graph in PARA folders (Projects / Areas / Resources / Archives), each entity with `summary.md` + atomic facts in `items.yaml`
+- `$AGENT_HOME/memory/YYYY-MM-DD.md` — daily notes / raw timeline
+- `$AGENT_HOME/MEMORY.md` — tacit knowledge about the user's operating patterns
+
+This layer is *durable*, *human-readable*, and *survives session resets*. Agents extract durable facts from conversation into Layer 3 during heartbeats; the conversational session (Layer 1) can be reset without losing knowledge.
+
+### Heartbeat audit trail
+
+Every heartbeat is recorded in two tables:
+
+| Table | Purpose |
+|-------|---------|
+| `heartbeat_runs` | one row per run: status (`queued`, `running`, `succeeded`, `failed`, `timed_out`, `cancelled`), exitCode, token usage, cost, error text |
+| `heartbeat_run_events` | structured events within a run (assignments, status updates, comments posted, etc.) |
+
+Used for observability and for the watchdog (§8 of `RUNBOOK.md`) — it queries `costs/by-agent` derived from these tables.
+
+### Agent prompts (system prompts)
+
+Each agent has a **prompt template** in its `runtimeConfig.promptTemplate` field. Variables like `{{agent.id}}`, `{{agent.name}}`, run context, and wake payload are interpolated at heartbeat start. Changes to the prompt are tracked in `agent_config_revisions` (full before/after diff, `changedKeys`, who changed it, source: `patch` / `rollback` / etc.). This is the audit trail for "what was the agent told to do."
+
+`bootstrapPromptTemplate` is deprecated — new agents use the **managed instructions bundle system** which composes prompt templates with assigned skills (below).
+
+### Skills: portable, versioned capability bundles
+
+A **skill** is a markdown-defined capability that an agent can install. Skills are stored in `company_skills` (per-company, scoped) and shipped as markdown + optional file inventory.
+
+| Field | Purpose |
+|-------|---------|
+| `key` | unique identifier within company (e.g. `paperclip`, `para-memory-files`) |
+| `markdown` | the SKILL.md body — instructions the model reads at heartbeat start |
+| `fileInventory` | additional files bundled with the skill (references, scripts) |
+| `sourceType` / `sourceLocator` / `sourceRef` | where the skill came from (`local_path`, `git`, etc.) for reproducibility |
+| `trustLevel` | `markdown_only` (no scripts run) up through trusted execution levels |
+| `compatibility` | `compatible` / version pin |
+
+**Built-in skills** shipped with paperclip (in `skills/` of `paperclipai/paperclip`):
+
+- `paperclip` — the canonical heartbeat procedure (how to check assignments, post comments, manage routines, call paperclip API). Every agent installs this.
+- `paperclip-converting-plans-to-tasks` — turning plans into trackable tasks
+- `paperclip-create-agent` — creating new agents from inside an agent
+- `paperclip-create-plugin` — creating paperclip plugins
+- `paperclip-dev` — paperclip-internal development workflows
+- `para-memory-files` — the file-based PARA memory system described above
+
+Skills are designed to be **portable** — the same `para-memory-files` skill markdown can be installed in any paperclip company, and an agent's resulting memory files are reproducible from the skill + the agent's accumulated history.
+
+### Configuration lives in paperclipai, not in this repo
+
+Agent definitions, system prompts, runtime config, and skill installations all live inside paperclipai's database (`agents`, `agent_runtime_state`, `agent_config_revisions`, `company_skills`) and are managed via the paperclipai UI or REST API. There is no file-based configuration for them in this repo. The skills *themselves* (the SKILL.md content) live in `paperclipai/paperclip` upstream — companies install them by reference, not by checking them into per-VPS repos.
+
+---
+
 ## Auth model
 
 paperclip handles its own auth. There is no external auth layer.
