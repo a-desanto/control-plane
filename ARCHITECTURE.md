@@ -62,8 +62,9 @@ All apps deployed on the canonical VPS (`cfpa.sekuirtek.com`), managed by Coolif
 | n8n | `tzek9xu60li84qqa8w68bgjh` | `https://n8n.cfpa.sekuirtek.com` | Automation workflows; calls paperclipai via board API key |
 | Flowise | `hlw1a5tdz7mu9o4r183uq96y` | `https://flowise.cfpa.sekuirtek.com` | Visual LLM chain builder |
 | activepieces | `l2wdubw2dwgfcaj38iidtcez` | `https://activepieces.cfpa.sekuirtek.com` | Automation alternative to n8n |
+| paperclip-mcp | `p13q05uj5ehqi866jp27g6fg` | internal only (`127.0.0.1:9011/mcp`) | MCP server exposing paperclipai tools to Claude CLI and other MCP clients |
 
-All containers run on the `coolify` Docker network. openrouter-proxy and openclaw-worker are `traefik.enable=false` — internal only.
+All containers run on the `coolify` Docker network. openrouter-proxy, openclaw-worker, and paperclip-mcp are `traefik.enable=false` — internal only.
 
 ### Decommissioned (fully deleted 2026-04-27)
 
