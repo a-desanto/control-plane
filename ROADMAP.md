@@ -181,17 +181,22 @@ These are infrastructure gaps below the v3.3 target architecture (Phases 6-13). 
 
 ## Phase 14 — Observability layer (Langfuse + Loki + Grafana)
 
-**Status:** Not started. **Priority: must-do — gates Phase 8 (eval).**
+**Status:** Langfuse + instrumentation done 2026-05-01. Real traces flowing from openrouter-proxy and openclaw-worker; verified end-to-end with trace ID `261c88962639b61d960300da12c285b3`. Loki + Grafana pending (Phase 14B).
 
-Deploy a control VPS (or local containers) running:
+### Phase 14A — Langfuse ✓ DONE
 
-- **Langfuse** for unified LLM observability — every paperclip heartbeat, every adapter run, every MCP tool call traced. RUNBOOK §1 already anticipates this with `LANGFUSE_HOST` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` env vars; the actual Langfuse container is not yet deployed.
+- Langfuse v3 deployed at `https://langfuse.cfpa.sekuirtek.com` (Caring First project, seeded org/project/admin via `LANGFUSE_INIT_*` env vars on 2026-04-30).
+- `openrouter-proxy`: every `POST /v1/messages` wrapped in a Langfuse `generation` span — model, input messages, token usage, latency, error level recorded. Covers all LLM calls fleet-wide without touching paperclipai source.
+- `openclaw-worker`: `@observe(process_issue)` creates one root trace per task; `@observe(run_openclaw, as_type="generation")` creates a nested generation span with model, token usage, and output from openclaw `--json` stdout.
+- Both services use `LANGFUSE_HOST=http://langfuse-langfuse-web-1:3000` (internal Docker DNS), `LANGFUSE_PUBLIC_KEY`, and `LANGFUSE_SECRET_KEY`. Graceful disabled-mode fallback if keys are absent.
+- Verification heartbeat trace `261c88962639b61d960300da12c285b3`: input="Reply with only: PHASE_14_TRACE_VERIFIED", output="PHASE_14_TRACE_VERIFIED", model=`anthropic/claude-haiku-4-5-20251001`, 21 input tokens / 13 output tokens, cost=$0.000086, latency=1.08s.
+
+### Phase 14B — Loki + Grafana (pending)
+
 - **Loki + Promtail** for centralized container log aggregation across all client VPSes.
 - **Grafana** for dashboards: paperclip activity, worker health, openrouter-proxy throughput, per-agent cost, watchdog alert history.
 
-**Acceptance:** an issue running on any client VPS produces a Langfuse trace visible from the control VPS within 10s. Loki receives docker logs from every client VPS. Grafana dashboard shows live cost-per-agent and run-success rate across the fleet.
-
-**Open input:** control VPS provider (Hostinger small box ~$5/mo recommended). Per-VPS Langfuse project vs single project with tags — recommendation: per-client project for tenancy clarity.
+**Acceptance (14B):** Loki receives docker logs from every client VPS. Grafana dashboard shows live cost-per-agent and run-success rate across the fleet.
 
 ---
 
