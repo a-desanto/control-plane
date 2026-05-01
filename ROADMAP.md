@@ -177,7 +177,7 @@ Pipecat or LiveKit + paperclip MCP tool for inbound/outbound calls. Real-time vo
 
 ### Strategic / product
 
-- **Vertical or horizontal?** "Business OS for SMBs" horizontal is hard to win — Microsoft, Notion, Zapier are all there with bigger libraries. "Business OS for [accounting firms / medical practices / law firms / home services / real estate]" is 10x easier because workflows pre-build themselves and the per-VPS isolation story plays even better in compliance-heavy verticals. **Decision needed before Phase 12.**
+- ~~**Vertical or horizontal?**~~ **Resolved 2026-04-30:** horizontal platform with vertical extensions. Tony's existing client relationships span all five candidate verticals (legal, medical, accounting, home services, real estate). Strategy is to build the universal SMB workflow set first (Phase 12) — workflows that work for every client regardless of vertical — then layer vertical-specific extensions as individual clients pull on them. Positioning is "AI operating system for service businesses with vertical extensions," not "everything for everybody."
 - **Pricing tier structure.** Per-VPS monthly is good positioning but flat-fee caps account expansion. Define Starter / Pro / Enterprise tiers — likely gated on workflow count, agent count, or data volume.
 - **Cross-client learning.** Per-VPS isolation prevents pattern learning across clients. Acceptable in v3.3; design a federated or anonymized-pattern-sharing story when fleet hits 10+.
 
