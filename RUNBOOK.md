@@ -719,3 +719,57 @@ c.connect()
 **Key finding:** `costs/by-agent` returns genuine rolling-window spend, not lifetime totals.
 The 60-minute threshold is the most likely to trigger in practice for a busy agent. The
 1-minute and 5-minute thresholds guard against sudden bursts (e.g. a runaway loop).
+
+---
+
+## §9 Control VPS operations — Langfuse
+
+Langfuse is deployed via docker-compose on the **existing client VPS** (same machine as paperclipai). The compose stack lives at `/opt/langfuse/`.
+
+### Access
+
+- **UI:** `https://langfuse.cfpa.sekuirtek.com` — log in as `desanto.tony@gmail.com` (password in your secrets manager under "Langfuse admin")
+- **Org:** CFPA (`d1b90add-47ce-40f5-8d5b-b512af3f49c0`)
+- **Project:** Caring First (`0442c678-2251-4b9e-8e8e-ac28ba0296b0`)
+- **API keys:** public key prefix `pk-lf-9d9432aa9b68ed63bca0fc1d1b3710f0`, full secret key in secrets manager under "Langfuse CFPA project"
+
+### Day-to-day operations
+
+```bash
+# Status
+cd /opt/langfuse && docker compose ps
+
+# Tail logs (langfuse-worker processes ingestion events)
+docker logs langfuse-langfuse-worker-1 -f
+
+# Restart all services
+cd /opt/langfuse && docker compose restart
+
+# Update to latest Langfuse v3 image
+cd /opt/langfuse && docker compose pull && docker compose up -d
+```
+
+### Rotate Langfuse API keys
+
+1. Log in to `https://langfuse.cfpa.sekuirtek.com` → Caring First project → Settings → API Keys.
+2. Create new key pair. Copy the secret key immediately (shown once only).
+3. Update `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` env vars in Coolify for: paperclipai, openclaw-worker, cfpa-watchdog.
+4. Redeploy all three containers (Coolify → Deploy).
+5. Delete the old key in Langfuse Settings.
+6. Update secrets manager entry.
+
+### Add a new client project
+
+1. In Langfuse UI → CFPA org → New Project. Name it after the client (e.g. "Acme Corp").
+2. Generate API keys for the new project.
+3. On the new client VPS, set `LANGFUSE_HOST=https://langfuse.cfpa.sekuirtek.com`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` in Coolify for paperclipai, openclaw-worker, and cfpa-watchdog.
+4. Redeploy those containers.
+5. Save the new keys to secrets manager under "Langfuse <ClientName> project".
+
+### Architecture note
+
+Langfuse runs in a dedicated `langfuse-internal` Docker bridge network. Only `langfuse-web` is also on the `coolify` network (for Traefik TLS termination). Internal services (`langfuse-postgres`, `langfuse-redis`, `clickhouse`, `minio`) are isolated to `langfuse-internal` only. Service names were prefixed (`langfuse-postgres`, `langfuse-redis`) to prevent DNS collision with Coolify's own postgres and redis containers on the shared `coolify` network.
+
+### Deployment history
+
+Phase 14 deployed 2026-04-30. Deployed on the existing client VPS rather than a new control VPS — adequate for a single client; revisit when fleet exceeds 3 clients or Langfuse storage exceeds 20GB. Compose file: `/opt/langfuse/docker-compose.yml`. Secrets: `/opt/langfuse/.env` (do not commit). See `PHASE14_LANGFUSE_RUNBOOK.md` for the full deployment runbook.

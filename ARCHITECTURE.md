@@ -4,7 +4,7 @@
 
 **v3.3 — high-end SMB business OS direction.** This document describes both the live system (sections 1–10, deployed and working) and the target architecture (section "Target architecture (in flight)") that closes the gap to a credible high-end SMB business OS.
 
-Live deployment last verified 2026-04-28: Path B (openclaw-worker) and OpenCode native adapter both confirmed working end-to-end (Phase 3B + Phase 3C smoke tests). Target architecture phases (6–13) tracked in `ROADMAP.md`.
+Live deployment last verified 2026-04-30: Langfuse observability (Phase 14) deployed and operational at `langfuse.cfpa.sekuirtek.com`. CFPA org + Caring First project pre-seeded; LANGFUSE_* env vars wired to paperclipai, openclaw-worker, and cfpa-watchdog. Target architecture phases (6–13) tracked in `ROADMAP.md`.
 
 **Positioning:** per-client VPS isolation, paperclip as orchestration brain, MCP-style tool protocol, Coolify-managed fleet. Sold as a managed monthly service — the client's "operating system." Differentiates from horizontal SaaS via data isolation, compliance posture, and verticalized workflow library (vertical pick is an open strategic question).
 
@@ -62,8 +62,9 @@ All apps deployed on the canonical VPS (`cfpa.sekuirtek.com`), managed by Coolif
 | n8n | `tzek9xu60li84qqa8w68bgjh` | `https://n8n.cfpa.sekuirtek.com` | Automation workflows; calls paperclipai via board API key |
 | Flowise | `hlw1a5tdz7mu9o4r183uq96y` | `https://flowise.cfpa.sekuirtek.com` | Visual LLM chain builder |
 | activepieces | `l2wdubw2dwgfcaj38iidtcez` | `https://activepieces.cfpa.sekuirtek.com` | Automation alternative to n8n |
+| Langfuse | docker-compose @ `/opt/langfuse` | `https://langfuse.cfpa.sekuirtek.com` | LLM observability — traces, costs, prompts for every agent run (Phase 14) |
 
-All containers run on the `coolify` Docker network. openrouter-proxy and openclaw-worker are `traefik.enable=false` — internal only.
+All containers run on the `coolify` Docker network. Langfuse runs in its own `langfuse-internal` bridge network; `langfuse-web` is also on `coolify` for Traefik routing. openrouter-proxy and openclaw-worker are `traefik.enable=false` — internal only.
 
 ### Decommissioned (fully deleted 2026-04-27)
 

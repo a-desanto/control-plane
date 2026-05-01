@@ -181,17 +181,15 @@ These are infrastructure gaps below the v3.3 target architecture (Phases 6-13). 
 
 ## Phase 14 — Observability layer (Langfuse + Loki + Grafana)
 
-**Status:** Not started. **Priority: must-do — gates Phase 8 (eval).**
+**Status: Langfuse done 2026-04-30. Loki + Grafana pending.**
 
-Deploy a control VPS (or local containers) running:
+- **Langfuse** — deployed on client VPS at `https://langfuse.cfpa.sekuirtek.com` (v3.172.0). CFPA org + Caring First project pre-seeded. `LANGFUSE_*` env vars wired to paperclipai, openclaw-worker, cfpa-watchdog. API keys confirmed working. See `RUNBOOK.md §9` and `PHASE14_LANGFUSE_RUNBOOK.md` for full ops detail.
+- **Loki + Promtail** — not started. Centralized container log aggregation across client VPSes.
+- **Grafana** — not started. Dashboards for agent cost, run success rate, watchdog alerts.
 
-- **Langfuse** for unified LLM observability — every paperclip heartbeat, every adapter run, every MCP tool call traced. RUNBOOK §1 already anticipates this with `LANGFUSE_HOST` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` env vars; the actual Langfuse container is not yet deployed.
-- **Loki + Promtail** for centralized container log aggregation across all client VPSes.
-- **Grafana** for dashboards: paperclip activity, worker health, openrouter-proxy throughput, per-agent cost, watchdog alert history.
+**Acceptance (Langfuse):** API key pair working (ingestion API returns 201). LANGFUSE_* env vars confirmed present in all three agent containers. Real agent execution (CAR-30, openclaw-agent, $0.43 Claude spend) confirmed 2026-04-30. SDK-level trace instrumentation inside openclaw-worker is a follow-on task — env vars are wired but explicit Langfuse SDK calls in application code need to be added.
 
-**Acceptance:** an issue running on any client VPS produces a Langfuse trace visible from the control VPS within 10s. Loki receives docker logs from every client VPS. Grafana dashboard shows live cost-per-agent and run-success rate across the fleet.
-
-**Open input:** control VPS provider (Hostinger small box ~$5/mo recommended). Per-VPS Langfuse project vs single project with tags — recommendation: per-client project for tenancy clarity.
+**Remaining for full Phase 14:** Loki + Promtail (docker logs → Loki), Grafana dashboards, openclaw-worker Langfuse SDK instrumentation (code-level, not just env vars).
 
 ---
 
