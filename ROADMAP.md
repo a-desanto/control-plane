@@ -86,9 +86,9 @@ New worker container `browseruse-worker`. Polls paperclip queue same as openclaw
 
 ## Phase 8 — Evaluation and regression layer
 
-**Status:** Not started. **Priority: must-do before scaling past 3 clients.**
+**Status:** Not started. **Priority: must-do before scaling past 3 clients** — every prompt change is currently a leap of faith. **Depends on Phase 14** (Langfuse must be deployed first to provide the trace store).
 
-Langfuse already collects traces. Add Promptfoo or Braintrust for offline eval. Per-workflow regression suites run on sample historical traces every prompt change. CI integration blocks deploys when score drops > 5%.
+Once Langfuse is collecting traces (Phase 14), add Promptfoo or Braintrust for offline eval. Per-workflow regression suites run on sample historical traces every prompt change. CI integration blocks deploys when score drops > 5%.
 
 **Acceptance:** changing a prompt template in `agent_config_revisions` triggers automatic regression run; merge blocked if score drops below threshold. Per-workflow eval coverage > 80% of production traces.
 
