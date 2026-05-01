@@ -1,6 +1,7 @@
 FROM python:3.12-slim
 
-# Install direct from git so README.md is present during hatchling metadata build
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+
 RUN pip install --no-cache-dir \
     "git+https://github.com/Wizarck/paperclip-mcp.git@master"
 
