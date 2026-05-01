@@ -10,5 +10,6 @@ Per-client VPS configuration and worker code for the paperclipai platform. paper
 |------|----------------|
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Current deployed stack, component UUIDs, execution paths, auth model, LLM routing |
 | [`RUNBOOK.md`](RUNBOOK.md) | Env vars, deploy steps, key management, known gotchas |
-| [`ROADMAP.md`](ROADMAP.md) | What comes next (Holon worker, OpenClaw native adapter, per-VPS template) |
+| [`ROADMAP.md`](ROADMAP.md) | What comes next — Phase 5 (per-VPS template), Phases 6-13 (frontier capabilities), Phases 14-21 (infrastructure layer) |
+| [`WORKFLOWS.md`](WORKFLOWS.md) | Universal seven SMB workflows — specs, build order, platform-phase dependencies |
 | [`PIVOT_TO_PAPERCLIP.md`](PIVOT_TO_PAPERCLIP.md) | History: why we decommissioned the custom FastAPI brain |
