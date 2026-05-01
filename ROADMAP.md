@@ -124,13 +124,42 @@ Extend `agent_wakeup_requests` with `external_event` source type. n8n webhook pa
 
 ---
 
-## Phase 12 — Workflow library
+## Phase 12 — Workflow library (universal-first, vertical extensions)
 
-**Status:** Not started; **gated on the vertical-vs-horizontal decision** (see open questions).
+**Status:** Not started. Strategy resolved 2026-04-30: **horizontal platform with vertical extensions** — build the universal SMB workflow set first (works for every client regardless of vertical), then layer vertical-specific workflows as individual clients pull on them.
 
-Ship 5–10 pre-built workflows. Candidate set: lead qualification, invoice processing, support triage, appointment scheduling, contract review, weekly reporting, customer onboarding. Each = paperclip skill bundle + n8n workflow + agent assignments + eval suite.
+### Universal SMB workflows (build first, ship to every client)
 
-**Acceptance:** new client onboarding includes "pick 3 workflows" and they're live within 30 minutes of pick. Each shipped workflow has an eval suite (Phase 8) at >80% coverage.
+These are the workflows every SMB owner needs regardless of vertical. They are document-heavy and SaaS-tool-heavy, which means Phase 6 (RAG) and Phase 7 (browser-use worker) deliver maximum leverage here.
+
+1. **Lead qualification** — inbound triage, scoring, routing
+2. **Email / inbox management** — triage, drafting, follow-up reminders
+3. **Invoice processing** — extraction, categorization, AP/AR tracking
+4. **Document organization & search** — Phase 6 RAG layer in production form
+5. **Meeting notes + follow-up tracking** — capture, action-item extraction, reminders
+6. **Customer support triage** — ticket categorization, priority routing, draft responses
+7. **Scheduling / appointment workflows** — calendar coordination, reminders, rescheduling
+
+Each = paperclip skill bundle + n8n workflow + agent assignments + eval suite (Phase 8). Each ships with eval coverage > 80% before going to a paying client.
+
+### Vertical-specific extensions (add as clients pull)
+
+Layered on top of the universal seven. Tony's existing client relationships span all five verticals — extensions are added when a specific client's workflow needs them.
+
+| Vertical | Vertical-specific workflows |
+|----------|------------------------------|
+| Legal | Contract review, conflict checking, billable-hour summarization |
+| Medical | Intake forms, appointment reminders, claims status |
+| Accounting | Client onboarding, document collection, deadline tracking |
+| Home services | Dispatch logic, route optimization, follow-up estimates |
+| Real estate | Listing sync, lead routing, contract chasing |
+
+### Acceptance
+
+- Every new client gets the universal seven on day one (live within 30 minutes of onboarding pick).
+- 1-3 vertical-specific extensions per client based on their actual business.
+- Each shipped workflow has an eval suite at >80% coverage.
+- Positioning: "AI operating system for service businesses, with vertical extensions" — not "everything for everybody."
 
 ---
 
