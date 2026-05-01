@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
+from langfuse import get_client, observe
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -46,6 +47,8 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 log = logging.getLogger("openclaw-worker")
+
+_langfuse = get_client()
 
 # ── HTTP helpers ───────────────────────────────────────────────────────────────
 
@@ -149,6 +152,7 @@ def _subprocess_env() -> dict[str, str]:
         env["ANTHROPIC_BASE_URL"] = ANTHROPIC_BASE
     return env
 
+@observe(name="run_openclaw", as_type="generation")
 async def run_openclaw(work_dir: Path, prompt: str) -> tuple[int, str, str]:
     cmd = [
         "openclaw", "agent",
@@ -175,11 +179,39 @@ async def run_openclaw(work_dir: Path, prompt: str) -> tuple[int, str, str]:
             proc.kill()
             await proc.communicate()
             return 124, "", f"openclaw timed out after {TASK_TIMEOUT}s"
-        return (
-            proc.returncode or 0,
-            stdout_b.decode(errors="replace"),
-            stderr_b.decode(errors="replace"),
-        )
+
+        exit_code = proc.returncode or 0
+        stdout = stdout_b.decode(errors="replace")
+        stderr = stderr_b.decode(errors="replace")
+
+        if stdout.strip():
+            try:
+                parsed = json.loads(stdout.strip())
+                if isinstance(parsed, dict):
+                    usage_raw = parsed.get("usage") or {}
+                    in_tok = (
+                        usage_raw.get("input_tokens")
+                        or usage_raw.get("input")
+                        or usage_raw.get("prompt_tokens")
+                    )
+                    out_tok = (
+                        usage_raw.get("output_tokens")
+                        or usage_raw.get("output")
+                        or usage_raw.get("completion_tokens")
+                    )
+                    _langfuse.update_current_generation(
+                        model=parsed.get("model"),
+                        usage_details={"input": in_tok, "output": out_tok},
+                        output=parsed.get("content"),
+                        metadata={
+                            "stop_reason": parsed.get("stop_reason"),
+                            "exit_code": exit_code,
+                        },
+                    )
+            except Exception:
+                pass
+
+        return exit_code, stdout, stderr
     except FileNotFoundError:
         return 127, "", "openclaw binary not found in PATH"
 
@@ -274,12 +306,18 @@ def _build_summary(
 
 # ── Task execution ─────────────────────────────────────────────────────────────
 
+@observe(name="process_issue")
 async def process_issue(client: httpx.AsyncClient, issue: dict) -> None:
     issue_id: str = issue["id"]
     title: str = issue.get("title", "")
     work_dir = WORK_BASE / issue_id
     work_dir.mkdir(parents=True, exist_ok=True)
 
+    _langfuse.update_current_span(
+        name=f"issue:{issue_id}",
+        input={"issue_id": issue_id, "title": title},
+        metadata={"agent_id": AGENT_ID},
+    )
     log.info("issue %s: %s", issue_id, title[:100])
 
     try:
