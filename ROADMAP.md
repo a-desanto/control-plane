@@ -86,9 +86,9 @@ New worker container `browseruse-worker`. Polls paperclip queue same as openclaw
 
 ## Phase 8 — Evaluation and regression layer
 
-**Status:** Not started. **Priority: must-do before scaling past 3 clients.**
+**Status:** Not started. **Priority: must-do before scaling past 3 clients** — every prompt change is currently a leap of faith. **Depends on Phase 14** (Langfuse must be deployed first to provide the trace store).
 
-Langfuse already collects traces. Add Promptfoo or Braintrust for offline eval. Per-workflow regression suites run on sample historical traces every prompt change. CI integration blocks deploys when score drops > 5%.
+Once Langfuse is collecting traces (Phase 14), add Promptfoo or Braintrust for offline eval. Per-workflow regression suites run on sample historical traces every prompt change. CI integration blocks deploys when score drops > 5%.
 
 **Acceptance:** changing a prompt template in `agent_config_revisions` triggers automatic regression run; merge blocked if score drops below threshold. Per-workflow eval coverage > 80% of production traces.
 
@@ -124,13 +124,42 @@ Extend `agent_wakeup_requests` with `external_event` source type. n8n webhook pa
 
 ---
 
-## Phase 12 — Workflow library
+## Phase 12 — Workflow library (universal-first, vertical extensions)
 
-**Status:** Not started; **gated on the vertical-vs-horizontal decision** (see open questions).
+**Status:** Not started. Strategy resolved 2026-04-30: **horizontal platform with vertical extensions** — build the universal SMB workflow set first (works for every client regardless of vertical), then layer vertical-specific workflows as individual clients pull on them.
 
-Ship 5–10 pre-built workflows. Candidate set: lead qualification, invoice processing, support triage, appointment scheduling, contract review, weekly reporting, customer onboarding. Each = paperclip skill bundle + n8n workflow + agent assignments + eval suite.
+### Universal SMB workflows (build first, ship to every client)
 
-**Acceptance:** new client onboarding includes "pick 3 workflows" and they're live within 30 minutes of pick. Each shipped workflow has an eval suite (Phase 8) at >80% coverage.
+These are the workflows every SMB owner needs regardless of vertical. They are document-heavy and SaaS-tool-heavy, which means Phase 6 (RAG) and Phase 7 (browser-use worker) deliver maximum leverage here.
+
+1. **Lead qualification** — inbound triage, scoring, routing
+2. **Email / inbox management** — triage, drafting, follow-up reminders
+3. **Invoice processing** — extraction, categorization, AP/AR tracking
+4. **Document organization & search** — Phase 6 RAG layer in production form
+5. **Meeting notes + follow-up tracking** — capture, action-item extraction, reminders
+6. **Customer support triage** — ticket categorization, priority routing, draft responses
+7. **Scheduling / appointment workflows** — calendar coordination, reminders, rescheduling
+
+Each = paperclip skill bundle + n8n workflow + agent assignments + eval suite (Phase 8). Each ships with eval coverage > 80% before going to a paying client.
+
+### Vertical-specific extensions (add as clients pull)
+
+Layered on top of the universal seven. Tony's existing client relationships span all five verticals — extensions are added when a specific client's workflow needs them.
+
+| Vertical | Vertical-specific workflows |
+|----------|------------------------------|
+| Legal | Contract review, conflict checking, billable-hour summarization |
+| Medical | Intake forms, appointment reminders, claims status |
+| Accounting | Client onboarding, document collection, deadline tracking |
+| Home services | Dispatch logic, route optimization, follow-up estimates |
+| Real estate | Listing sync, lead routing, contract chasing |
+
+### Acceptance
+
+- Every new client gets the universal seven on day one (live within 30 minutes of onboarding pick).
+- 1-3 vertical-specific extensions per client based on their actual business.
+- Each shipped workflow has an eval suite at >80% coverage.
+- Positioning: "AI operating system for service businesses, with vertical extensions" — not "everything for everybody."
 
 ---
 
@@ -144,11 +173,145 @@ Pipecat or LiveKit + paperclip MCP tool for inbound/outbound calls. Real-time vo
 
 ---
 
+# Infrastructure layer — Phases 14-21
+
+These are infrastructure gaps below the v3.3 target architecture (Phases 6-13). They are not new product capabilities — they are the foundational pieces that make a credible high-end MSP/business-OS offering possible. Most are required before scaling past 2-3 clients.
+
+## Phase 14 — Observability layer (Langfuse + Loki + Grafana)
+
+**Status:** Not started. **Priority: must-do — gates Phase 8 (eval).**
+
+Deploy a control VPS (or local containers) running:
+
+- **Langfuse** for unified LLM observability — every paperclip heartbeat, every adapter run, every MCP tool call traced. RUNBOOK §1 already anticipates this with `LANGFUSE_HOST` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` env vars; the actual Langfuse container is not yet deployed.
+- **Loki + Promtail** for centralized container log aggregation across all client VPSes.
+- **Grafana** for dashboards: paperclip activity, worker health, openrouter-proxy throughput, per-agent cost, watchdog alert history.
+
+**Acceptance:** an issue running on any client VPS produces a Langfuse trace visible from the control VPS within 10s. Loki receives docker logs from every client VPS. Grafana dashboard shows live cost-per-agent and run-success rate across the fleet.
+
+**Open input:** control VPS provider (Hostinger small box ~$5/mo recommended). Per-VPS Langfuse project vs single project with tags — recommendation: per-client project for tenancy clarity.
+
+---
+
+## Phase 15 — OAuth manager / federated identity for SaaS integrations
+
+**Status:** Not started. **Priority: highest infrastructure-tier — gates Phase 7 (browser-use worker) and most workflows.**
+
+When an agent acts in the client's Gmail, Calendar, CRM, accounting system, etc., who owns those auth tokens? Where are they stored? How are refreshes handled? Who can revoke them? This is the auth layer that sits *under* Phase 7 and most workflows.
+
+**Target:** per-VPS encrypted token vault built on paperclip's existing `company_secrets` + `company_secret_versions` tables. OAuth flow handler (Next.js API routes deployed alongside paperclip). Scoped per-agent access ("this agent can read Gmail but not send"; "that agent can send invoices but not modify customer records"). Token refresh handled by a background worker.
+
+**Acceptance:** an operator can connect a client's Gmail, Drive, and CRM via a guided OAuth flow. Agents request scoped tokens at heartbeat start; expired tokens auto-refresh; all access is logged.
+
+**Why this matters:** without it, every integration is a one-off and a leaked token compromises the client's whole stack.
+
+---
+
+## Phase 16 — End-client identity & access (extends Phase 9)
+
+**Status:** Not started. Bundle with Phase 9 if shipped together.
+
+paperclipai's `board_api_keys` table is for operators (you and your team). The SMB owner who logs into the end-client UI is a *different* identity — they need their own user account, role-based access (owner / employee / read-only), MFA, ideally SSO with Google Workspace and Microsoft 365.
+
+**Target:** paperclip uses better-auth which natively supports OAuth providers + MFA. Wire Google + Microsoft SSO. Define roles: `client_owner` (full access), `client_employee` (workflow-scoped access), `client_readonly` (dashboards only). Map roles to API permissions.
+
+**Acceptance:** an SMB owner logs in via Google SSO, sees only their company's data, can invite their employees with appropriate role.
+
+---
+
+## Phase 17 — Notifications layer (push, email, SMS)
+
+**Status:** Not started.
+
+SMB owners are mobile. They need approval requests, daily digests, and urgent alerts to reach them where they are. Currently Discord webhooks exist for ops alerts (Tony's team) but nothing for the *client*.
+
+**Target:**
+
+- Email via Postmark or SES (transactional)
+- Push via APNS/FCM with a PWA wrapper around the end-client UI
+- SMS via Twilio for high-priority approvals
+- Per-user notification preferences stored in paperclip's `user_sidebar_preferences` or new `user_notification_preferences` table
+
+**Acceptance:** an approval request fires an email + push notification to the right user within 30s; user can respond from the notification (deep-link to approval UI).
+
+---
+
+## Phase 18 — Data lifecycle, retention, GDPR right-to-be-forgotten
+
+**Status:** Not started. **Priority: high — sales blocker for compliance verticals.**
+
+Compliance verticals (medical, legal, financial) will ask for data retention policies, automated deletion after N months, full export on demand, and the ability to honor "delete all data about this customer" requests. paperclipai has none of this today.
+
+**Target:**
+
+- Per-table retention policies in a `retention_policies` config table
+- Soft-delete with `deleted_at` columns on customer-data tables; nightly hard-delete sweeper after policy expires
+- Export-to-zip endpoint per company that produces a tarball of all client data + ingested documents
+- Audit log of who accessed what data when (extends `activity_log`)
+
+**Acceptance:** an operator can configure "delete invoices > 7 years old" and the sweeper removes them. An export-on-demand request produces a zip of all client data within 24h. A deletion request removes a specific customer's data from documents, embeddings, and audit logs within 72h.
+
+---
+
+## Phase 19 — Compliance posture (SOC 2 / HIPAA roadmap)
+
+**Status:** Not started. **Priority: blocks sales conversations with procurement-heavy buyers.**
+
+Per-VPS isolation is a structural compliance win, but there's no documented SOC 2 control mapping, no HIPAA technical safeguards inventory, no Business Associate Agreement template, no penetration test, no documented incident response plan.
+
+**Target (in order of selling-pressure):**
+
+1. Compliance summary doc — names the controls in place (per-VPS isolation, encrypted backups, audit logs, MFA), the ones in progress, the ones planned
+2. Incident response plan — who gets paged, when, escalation tree, post-mortem template
+3. BAA / DPA templates — pre-signed Business Associate Agreement for HIPAA clients, Data Processing Agreement for GDPR
+4. Penetration test — annual, with summary report shareable under NDA
+5. SOC 2 Type II — full audit (year 2 priority unless a big client demands it sooner)
+
+**Acceptance:** a prospect's procurement team receives a single PDF compliance summary that addresses 80% of their standard questions without escalation.
+
+---
+
+## Phase 20 — Onboarding / ingestion bootstrap (Day 1 experience)
+
+**Status:** Not started. **Priority: high — required for second client onboarding.**
+
+When a new client signs up, what happens in the first 24 hours? They expect: connect Gmail → 2 years of email indexed; connect Drive → all docs indexed; connect calendar → upcoming events visible; connect CRM → customer records pulled. Right now this would be a custom setup per client.
+
+**Target:** automated onboarding flow built into the end-client UI (Phase 9):
+
+1. Operator provisions VPS via Phase 5 template
+2. Client logs in (Phase 16), runs guided setup wizard
+3. Wizard asks: which sources to connect (Gmail/Drive/Dropbox/etc.), which workflows to enable from the universal seven (Phase 12), which agents to provision
+4. Background ingestion worker (Phase 6) populates the knowledge base; client sees progress meter
+5. When ingestion completes, daily digest goes out: "Your AI is ready"
+
+**Acceptance:** elapsed time from "client logs in" to "first workflow runs successfully" is under 4 hours unattended.
+
+---
+
+## Phase 21 — Billing / subscription management
+
+**Status:** Not started. **Priority: medium — manageable manually for first 5 clients, painful at 6+.**
+
+If it's a managed service with tiered SKUs, you need Stripe integration, invoicing, dunning logic, plan upgrades, usage-based add-ons (extra agents, extra workflows, premium support tiers).
+
+**Target:**
+
+- Stripe Checkout for new client signup
+- Stripe Customer Portal for plan management (upgrade/downgrade, payment method changes)
+- Per-company usage metering (agent-hours, documents processed, workflows active) → Stripe usage records
+- Monthly invoice automation
+- Dunning workflow for failed payments (n8n + paperclip workflow)
+
+**Acceptance:** a new client can self-serve a paid signup via Stripe; their VPS is provisioned automatically; first invoice generates correctly; failed-payment workflow auto-pauses agents after configurable grace period.
+
+---
+
 ## Open questions to resolve before scaling beyond one VPS
 
 ### Strategic / product
 
-- **Vertical or horizontal?** "Business OS for SMBs" horizontal is hard to win — Microsoft, Notion, Zapier are all there with bigger libraries. "Business OS for [accounting firms / medical practices / law firms / home services / real estate]" is 10x easier because workflows pre-build themselves and the per-VPS isolation story plays even better in compliance-heavy verticals. **Decision needed before Phase 12.**
+- ~~**Vertical or horizontal?**~~ **Resolved 2026-04-30:** horizontal platform with vertical extensions. Tony's existing client relationships span all five candidate verticals (legal, medical, accounting, home services, real estate). Strategy is to build the universal SMB workflow set first (Phase 12) — workflows that work for every client regardless of vertical — then layer vertical-specific extensions as individual clients pull on them. Positioning is "AI operating system for service businesses with vertical extensions," not "everything for everybody."
 - **Pricing tier structure.** Per-VPS monthly is good positioning but flat-fee caps account expansion. Define Starter / Pro / Enterprise tiers — likely gated on workflow count, agent count, or data volume.
 - **Cross-client learning.** Per-VPS isolation prevents pattern learning across clients. Acceptable in v3.3; design a federated or anonymized-pattern-sharing story when fleet hits 10+.
 
