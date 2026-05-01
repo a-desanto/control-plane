@@ -128,6 +128,8 @@ Extend `agent_wakeup_requests` with `external_event` source type. n8n webhook pa
 
 **Status:** Not started. Strategy resolved 2026-04-30: **horizontal platform with vertical extensions** — build the universal SMB workflow set first (works for every client regardless of vertical), then layer vertical-specific workflows as individual clients pull on them.
 
+**Detailed workflow specs and build order:** see `WORKFLOWS.md`. Each of the seven workflows is documented with trigger, data sources, integrations, agent skills, MVP vs full scope, and platform-phase dependencies. The build sequence is in the same doc.
+
 ### Universal SMB workflows (build first, ship to every client)
 
 These are the workflows every SMB owner needs regardless of vertical. They are document-heavy and SaaS-tool-heavy, which means Phase 6 (RAG) and Phase 7 (browser-use worker) deliver maximum leverage here.
