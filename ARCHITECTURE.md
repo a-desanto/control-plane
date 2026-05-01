@@ -225,6 +225,65 @@ https://openrouter.ai/api/v1/messages
 
 ---
 
+## Tool integration patterns — MCP vs direct API
+
+paperclipai uses two distinct integration patterns. Knowing which to use for a given integration is a foundational architectural decision; getting it wrong creates either useless flexibility (over-MCP'ing) or rigid coupling (under-MCP'ing).
+
+### The two patterns
+
+**MCP (Model Context Protocol).** Anthropic-defined protocol (Nov 2024, industry standard by mid-2025) for exposing tools to LLM agents. MCP servers self-describe via `tools/list`; agents discover and invoke tools at runtime without per-tool integration code. Two transports: stdio (local processes) and HTTP/SSE (network). The standard at the **agent ↔ tool boundary**.
+
+**Direct API integration.** Raw HTTP/REST/GraphQL/SDK calls. Custom code per integration, custom auth handling, custom error semantics. The standard at the **infrastructure boundary** — service-to-service plumbing, webhooks, event streams, internal calls.
+
+The two are not alternatives. **MCP servers almost always wrap APIs** — the MCP server is an adapter that exposes API functionality through the standardized agent protocol. The API still does the work; MCP makes it agent-consumable.
+
+```
+LLM agent ─► MCP tool call ─► MCP server ─► raw API ─► external service
+```
+
+### Decision rule
+
+**If an agent decides when/how to call something, use MCP. Otherwise use direct API.**
+
+Test: would a human-readable tool description help an LLM pick this tool over alternatives? If yes → MCP. If the call is unconditional infrastructure plumbing → direct API.
+
+### How the current stack uses both
+
+| Boundary | Pattern | Why |
+|----------|---------|-----|
+| Agent → external SaaS (Gmail, Drive, CRM, accounting) | **MCP** | Agent decides when to read mail, search docs, file an entry |
+| Agent → knowledge layer (Phase 6 RAG) | **MCP** | Agent decides when to search client documents |
+| Agent → browser automation (Phase 7) | **MCP** | Agent picks the SaaS UI action to drive |
+| paperclipai → OpenRouter (LLM provider) | Direct API | Transparent proxy, no agent decision involved |
+| paperclipai → its own embedded Postgres | Direct API | Internal infrastructure, not an agent-callable tool |
+| openclaw-worker polling paperclip's queue | Direct REST | Workers act on assignment, not agent decision |
+| External service → paperclip (n8n webhook) | Direct HTTP | Event push from outside, not agent-pull |
+| paperclipai → Stripe (Phase 21 billing) | Direct API | Billing automation, not an agent-decided action |
+
+The watchdog, backup runner, and openrouter-proxy are all direct-API. The skills + Phase 6 RAG + Phase 7 browser-use + every Phase 12 workflow integration is MCP.
+
+### Where API marketplaces fit
+
+API aggregators like **apilayer.com**, **RapidAPI**, and **AnyAPI** are developer-side conveniences — they bundle many third-party APIs (currency exchange, OCR, geolocation, weather, validators) under one auth + billing umbrella. They are **not** an architectural alternative to either pattern; they sit underneath both.
+
+If a workflow needs a niche data service (e.g. email-validator for lead qualification, OCR for scanned-PDF invoices, currency conversion for international invoices), the integration path is:
+
+1. Subscribe to the marketplace OR direct to the underlying provider
+2. If the marketplace is right (need 3+ such services, want unified billing), build one MCP server that wraps the marketplace's catalog and exposes each service as a tool
+3. Agent calls the MCP tool, MCP server calls the marketplace, marketplace routes to provider
+
+For 1-2 niche services, integrate direct (skip the marketplace overhead). For 5+ data services across workflows, a marketplace + MCP wrapper saves real ops time.
+
+### Practical implications
+
+- **Adding a new SaaS integration to a workflow:** build (or install) an MCP server. Don't add custom API-call code to the agent's skill markdown.
+- **Adding a new infrastructure component:** raw API. The agent doesn't need to know about it.
+- **Hybrid case (rare but real):** a service used by both agents and infrastructure (e.g. Stripe — agents draft customer messages about billing, infra automates dunning). Build the MCP wrapper for agent use; keep direct API calls in the billing workflow code. Same Stripe credentials, two consumers.
+
+This keeps the agent surface area portable (every MCP server is reusable across agents and clients), the infrastructure tight (no protocol overhead where it doesn't help), and the integration cost predictable.
+
+---
+
 ## Target architecture (in flight) — high-end SMB business OS
 
 The sections above describe the live system as of 2026-04-30. This section captures the planned direction — components that close the gap between "capable agentic platform" and "business operating system for SMBs." Each component has a Phase number in `ROADMAP.md` and a concrete tech choice; nothing here is research-grade.
