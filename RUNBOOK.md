@@ -719,3 +719,63 @@ c.connect()
 **Key finding:** `costs/by-agent` returns genuine rolling-window spend, not lifetime totals.
 The 60-minute threshold is the most likely to trigger in practice for a busy agent. The
 1-minute and 5-minute thresholds guard against sudden bursts (e.g. a runaway loop).
+
+---
+
+## §9 paperclip-mcp
+
+paperclip-mcp is a FastMCP server that wraps the paperclipai board API and exposes it as 21 MCP tools to Claude CLI and any other MCP client.
+
+**Coolify app UUID:** `p13q05uj5ehqi866jp27g6fg`
+**Source:** `a-desanto/control-plane`, branch `main`, base dir `/mcp-servers/paperclip-mcp`, build pack: Dockerfile
+**Port:** 9011 (mapped to host, `traefik.enable=false`)
+**MCP endpoint:** `http://127.0.0.1:9011/mcp`
+**Transport:** streamable-http (MCP 2024-11-05)
+
+### Environment variables
+
+| Variable | Value | Notes |
+|---|---|---|
+| `PAPERCLIP_BASE_URL` | `https://paperclipai.cfpa.sekuirtek.com/api` | External URL — internal Docker alias blocked by allowlist |
+| `PAPERCLIP_API_KEY` | `pcp_board_...` | Scoped key named `paperclip-mcp-operator`, 1-year expiry |
+| `PAPERCLIP_COMPANY_ID` | `bd80728d-6755-4b63-a9b9-c0e24526c820` | The active company ID |
+
+### Registering with Claude CLI
+
+```bash
+claude mcp add paperclip --transport http "http://127.0.0.1:9011/mcp"
+```
+
+Run from the `/root/control-plane` directory (or any project where you want access).
+
+### Available tools (21)
+
+`list_issues`, `get_issue`, `create_issue`, `update_issue`, `checkout_issue`, `release_issue`, `comment_on_issue`, `delete_issue`, `list_agents`, `get_agent`, `invoke_agent_heartbeat`, `list_goals`, `create_goal`, `update_goal`, `list_approvals`, `approve`, `reject`, `request_approval_revision`, `get_cost_summary`, `get_dashboard`, `list_activity`
+
+### Rebuilding
+
+If you need to rebuild the image (e.g., after a new release of `paperclip-mcp` upstream):
+
+```bash
+# In Coolify UI: paperclip-mcp → Deployments → Deploy
+# Or via API:
+curl -X POST -H "Authorization: Bearer <coolify-token>" \
+  http://localhost:8000/api/v1/applications/p13q05uj5ehqi866jp27g6fg/start
+```
+
+### Verification
+
+```bash
+# Quick tools/list check (requires session handshake)
+INIT=$(curl -s -X POST http://127.0.0.1:9011/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}' \
+  -D /tmp/mcp_h.txt)
+SID=$(grep -i 'mcp-session-id' /tmp/mcp_h.txt | awk '{print $2}' | tr -d '\r\n')
+curl -s -X POST http://127.0.0.1:9011/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "mcp-session-id: $SID" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+```
