@@ -62,7 +62,7 @@ Coolify → Add Server → apply template → set per-client env vars
 
 ## Phase 6 — Knowledge layer (RAG over client data)
 
-**Status:** Not started. **Priority: highest** — this is the single biggest credibility gap for "client's operating system" positioning.
+**Status:** Stage 1 done 2026-05-01: pgvector deployed via repurposed openclaw-pgvector-db container. New `client_knowledge` database + schema in place. Stages 2–5 (ingestion worker, retrieval MCP, verification) pending. **Priority: highest** — this is the single biggest credibility gap for "client's operating system" positioning.
 
 Add per-VPS pgvector store + ingestion worker for client documents (Gmail, Drive, Dropbox, etc.). Expose retrieval as MCP tool `search_client_knowledge(query, scope)`. Per-document ACLs scope which agents see what. Tables: `client_documents`, `client_document_chunks`. Embeddings via Anthropic, OpenAI, or Voyage.
 
