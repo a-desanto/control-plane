@@ -179,13 +179,37 @@ Once Langfuse is collecting traces (Phase 14), add Promptfoo or Braintrust for o
 
 ---
 
-## Phase 9 — End-client UI
+## Phase 9 — End-client UI + operator UI extension
 
-**Status:** Not started. **Priority: high — required before second client onboards.**
+**Status:** Not started. **Priority: high — end-client UI required before second client onboards.** paperclipai's native UI is for the operator, not the SMB owner.
 
-Separate Next.js app per VPS. Scoped to client's workflows. Conversational front door, document drop zone, agent activity feed, calendar view, approval queue, daily digest. Calls paperclipai's REST API via the client's session — no direct DB access. Branded per-client.
+### End-client UI (per-VPS app, ships first)
+
+Separate Next.js app per VPS. Scoped to client's workflows. Conversational front door, document drop zone, agent activity feed, calendar view, approval queue, "what did my agents do today" daily digest. Calls paperclipai's REST API via the client's session — no direct DB access. Branded per-client.
 
 **Acceptance:** an SMB owner can log in, drop a document, ask an agent to do something, see what happened, approve a sensitive action — without ever touching paperclipai's operator UI. White-labelable per client.
+
+### Operator UI extension (centralized, ships at 10+ clients)
+
+At 10+ client scale, the Grafana operator dashboard (Phase 5.5) starts hitting its limits — querying across many clients, drilling into per-client context, conversational ops, multi-client search, and team-collaboration features all benefit from a custom UI.
+
+**Architecture:** the same Next.js codebase that powers the end-client UI gains a separate operator route tree (`/admin/...`) with its own auth, role-based access, and views. Different routes, different roles, same codebase — operator gets fleet-wide views, end-clients get scoped views.
+
+**Operator UI capabilities (extending Grafana):**
+- Multi-client search and filter ("show me all clients on Linode pods")
+- Conversational ops via embedded paperclip-mcp ("create a workflow for client X")
+- Drill-down per-client with linked client docs, support history, billing status
+- Team views with role-based access (operator / support / read-only)
+- Per-client deep-link integration with Grafana, Langfuse, Coolify
+- Cross-client cost reporting + invoice generation (when Phase 21 ships)
+
+**Effort:** ~2-3 weeks once Phase 9 end-client UI scaffolding exists (extends, doesn't duplicate).
+
+**Cost:** ~$5-10/mo additional (one Coolify app on control VPS).
+
+**Acceptance:** at 10+ clients, operator can run all daily fleet management without leaving the operator UI. Grafana stays as a deeper-dive technical tool but isn't the daily driver anymore.
+
+**When to build:** trigger at 8-10 clients, when Grafana-only operations starts costing >5 hours/week. Don't pre-build; let the friction tell you when.
 
 ---
 
