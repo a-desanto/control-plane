@@ -411,7 +411,7 @@ Phase 19 compliance summary must list every subprocessor that touches PHI with: 
 
 ---
 
-## Target architecture (in flight) — high-end SMB business OS
+## Target architecture (in flight) — MSP-managed AI services for SMB
 
 The sections above describe the live system as of 2026-04-30. This section captures the planned direction — components that close the gap between "capable agentic platform" and "business operating system for SMBs." Each component has a Phase number in `ROADMAP.md` and a concrete tech choice; nothing here is research-grade.
 
