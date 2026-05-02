@@ -60,6 +60,91 @@ Coolify → Add Server → apply template → set per-client env vars
 
 ---
 
+## Phase 5.5 — Operator fleet dashboard (Grafana)
+
+**Status:** Not started. **Priority: build at 3-5 client scale.** Critical for MSP fleet visibility once you have more than 1-2 client VPSes to oversee.
+
+**Goal:** centralized operator dashboard showing the state of every client VPS at a glance — cost, health, agents, alerts, capacity. Replaces "SSH into each VPS to check" with "scan one screen for the whole fleet."
+
+**Stack** (all open-source, runs on existing control VPS at 187.77.213.142):
+- Grafana — dashboards + alerting UI
+- Prometheus — metrics scraping (per-VPS node-exporter + paperclipai metrics endpoint)
+- Loki + Promtail — centralized log aggregation across all client VPSes (this is Phase 14B work — the same Loki instance serves both purposes)
+- Existing data sources — Langfuse (cost + traces), paperclipai REST (agent state), Coolify API (VPS + deploy health)
+
+**Three dashboards to build:**
+1. **Fleet Overview** — single screen, one row per client. Columns: name, tier, provider, active agents, MTD cost, health, last incident. Sortable, filterable, color-coded by status.
+2. **Per-Client Drill-Down** — selected client only. Cost trend, agent activity, workflow status, recent traces (deep link to Langfuse), pending approvals, last 10 heartbeats.
+3. **Operations** — fleet-wide alerts, watchdog triggers, backup status, capacity warnings (disk, RAM, CPU per VPS), provider distribution.
+
+**Data wiring** (per VPS, automated by Ansible at IaC time):
+- node-exporter for system metrics (CPU/RAM/disk/network)
+- promtail shipping container logs to control-VPS Loki
+- paperclipai exposes Prometheus metrics (or scraped via API endpoint)
+
+**Acceptance:**
+- Operator can answer "which client cost spiked yesterday?" in <30 seconds without SSH
+- Fleet overview loads <2 seconds for up to 20 client VPSes
+- All three dashboards have working alerts (Discord / email)
+- Per-client deep links to Langfuse for trace investigation
+
+**Effort:** 5-7 days focused work, can be split across 2 weeks part-time.
+
+**Cost:** $0 additional infrastructure (runs on existing control VPS). Optional ~$5/mo extra disk for Loki retention if logs grow large.
+
+**Open input:** Grafana auth strategy — basic auth for operator-only at MVP, OAuth (Google Workspace SSO) later when you add team members.
+
+---
+
+## Phase 5.7 — Infrastructure-as-Code automation (Terraform + Ansible)
+
+**Status:** Not started. **Build trigger: 3-5 client scale** (when manual VPS provisioning starts costing real time).
+
+**Goal:** declarative templates that automate VPS provisioning, configuration, and ongoing fleet management. Replaces manual VPS-by-VPS clicks with one-command client onboarding.
+
+**Stack** (all open-source, $0/mo)
+- Terraform (or OpenTofu for cleaner licensing) — declarative VPS + Coolify resource provisioning
+- Ansible — VPS configuration (Docker, firewall, time sync, monitoring agents, Coolify agent install)
+- Coolify API — application-level deployment within VPSes (already in use)
+- GitHub Actions — CI/CD that triggers Terraform/Ansible on commits
+- State storage — S3 backend for Terraform state (~$0.10/mo)
+
+**What it enables**
+- One-command client onboarding: `./scripts/onboard-client.sh medical-practice-2 --tier compliance` runs Terraform → Ansible → Coolify → paperclipai company creation in ~30 minutes vs 4 hours manual
+- Drift detection: `terraform plan` flags when a VPS has drifted from canonical config (manual edits, missed updates)
+- Versioned infrastructure: every config change is git-tracked
+- Disaster recovery: rebuild any VPS from template in ~30 minutes
+- Multi-provider abstraction: Terraform speaks Hostinger, Linode, AWS, DO, Vultr natively — provider per client is a variable change
+- Bulk fleet operations: Ansible playbook updates all VPSes' OS config in one run
+
+**Per-client variables (template inputs)**
+```hcl
+client_name        = "medical-practice-2"
+tier               = "compliance-hipaa"   # or "general-smb" or "premium"
+provider           = "linode-business"     # or "hostinger" or "aws"
+region             = "us-east"
+vps_size           = "g6-standard-2"       # 4GB RAM
+compliance_baa     = true
+backup_destination = "s3://cfpa-backups/medical-practice-2/"
+```
+
+**Acceptance**
+- Adding a new client = run one script, 30 minutes start to ready-for-paperclipai-bootstrap
+- All existing client VPSes (post-build) imported into Terraform state for drift detection
+- Disaster recovery procedure: `terraform destroy && terraform apply` rebuilds a VPS from scratch + restore data from backup, end-to-end <60 minutes
+- `terraform plan` runs nightly via GitHub Actions, alerts on drift
+
+**Effort**
+~3 weeks of focused work, can spread across 6 weeks part-time:
+- Week 1: Terraform foundation + provider modules
+- Week 2: Ansible playbooks + Coolify integration
+- Week 3: Onboarding scripts + monitoring + GitHub Actions CI/CD
+
+**When to build**
+Don't build before client #3. With 1-2 clients, manual provisioning is fine and IaC is over-engineering for hypothetical future state. At client #3-4, the time saved on onboarding pays back the IaC investment within 5-7 client onboardings. Trigger this phase concurrently with Phase 5.5 (operator dashboard) — both are infrastructure visibility/automation work.
+
+---
+
 ## Phase 6 — Knowledge layer (RAG over client data)
 
 **Status:** Stage 1 done 2026-05-01: pgvector deployed via repurposed openclaw-pgvector-db container. New `client_knowledge` database + schema in place. Stages 2–5 (ingestion worker, retrieval MCP, verification) pending. **Priority: highest** — this is the single biggest credibility gap for "client's operating system" positioning.
