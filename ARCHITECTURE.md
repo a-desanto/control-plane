@@ -76,9 +76,12 @@ All apps deployed on the canonical VPS (`cfpa.sekuirtek.com`), managed by Coolif
 | n8n | `tzek9xu60li84qqa8w68bgjh` | `https://n8n.cfpa.sekuirtek.com` | Automation workflows; calls paperclipai via board API key |
 | Flowise | `hlw1a5tdz7mu9o4r183uq96y` | `https://flowise.cfpa.sekuirtek.com` | Visual LLM chain builder |
 | activepieces | `l2wdubw2dwgfcaj38iidtcez` | `https://activepieces.cfpa.sekuirtek.com` | Automation alternative to n8n |
-| openclaw-pgvector-db | `xcn2es4vmn01a1ug0w99vdr3` | internal only | Shared pgvector store. Hosts: `openclaw` db (reserved for future openclaw vector use, currently empty); `client_knowledge` db (Phase 6 RAG — client documents + embeddings + ACLs) |
+| paperclip-mcp | `p13q05uj5ehqi866jp27g6fg` | internal only (port 9011) | Operator MCP — exposes paperclip REST API as MCP tools so Claude CLI manages paperclipai conversationally instead of via curl/psql |
+| client-knowledge-db | `xcn2es4vmn01a1ug0w99vdr3` | internal only | Phase 6 RAG: shared Postgres + pgvector. Hosts `client_knowledge` database (schema deployed, ingestion + retrieval pending Phase 6 Stages 2-3); `openclaw` database reserved for future openclaw vector use |
+| cfpa-watchdog | standalone docker (not Coolify-managed) | internal only | Cost watchdog — polls costs/by-agent, pauses agents on threshold breach. See RUNBOOK §8 |
+| langfuse-web (etc.) | self-hosted on srv1408380 | `https://langfuse.cfpa.sekuirtek.com` | LLM observability + trace store. PR #22 instrumented openrouter-proxy and openclaw-worker for trace emission |
 
-All containers run on the `coolify` Docker network. openrouter-proxy, openclaw-worker, and openclaw-pgvector-db are `traefik.enable=false` — internal only.
+All containers run on the `coolify` Docker network. openrouter-proxy, openclaw-worker, paperclip-mcp, client-knowledge-db are `traefik.enable=false` — internal only.
 
 ### Decommissioned (fully deleted 2026-04-27)
 
