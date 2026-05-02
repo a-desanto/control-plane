@@ -319,13 +319,24 @@ Layered on top of the universal seven. Tony's existing client relationships span
 
 ---
 
-## Phase 13 — Voice interface (year 2)
+## Phase 13 — Voice add-on (Retell integration)
 
-**Status:** Deferred — year 2 priority.
+**Status:** Not started. **Reframed 2026-05-02:** voice ships as a Retell-powered add-on service, not a from-scratch build.
 
-Pipecat or LiveKit + paperclip MCP tool for inbound/outbound calls. Real-time voice models (OpenAI Realtime, Anthropic voice). First 10 clients should be stable on text/document workflows before voice ships.
+Originally planned as Pipecat/LiveKit/OpenAI Realtime infrastructure. Reframed: Retell AI is a managed voice-agent platform with HIPAA Healthcare tier and BAA. Integration is ~1-2 weeks instead of 6-12 months of from-scratch engineering.
 
-**Acceptance:** an agent can answer an inbound call, identify the caller, run a workflow (e.g. take an appointment), and post the resulting issue/note back to paperclip. Outbound: an agent can place an outreach call from a campaign workflow.
+**Stack:**
+- Retell AI account (Healthcare tier for HIPAA clients)
+- Phone numbers provisioned via Retell
+- Skills: voice-receptionist, voice-scheduler, voice-message-taker, outbound-caller
+- Agent: voice-agent (real-time conversational, runs in Retell, callbacks paperclipai for state)
+- Workflows: inbound-call, appointment-booking, outbound-campaign
+
+**Pricing** (per `ADD_ON_SERVICES.md`): $300/mo + $0.10-0.15/min pass-through. ROI: replaces $50/hour after-hours answering service at ~6 calls/week.
+
+**Acceptance:** an agent can answer an inbound call via Retell, identify the caller, run a workflow (e.g. take an appointment), and post the resulting issue/note back to paperclip. Outbound: an agent can place an outreach call from a campaign workflow. HIPAA clients on Retell Healthcare tier with BAA.
+
+**When to build:** when first paying client asks for voice. Don't build speculatively. Voice is highest-leverage for medical (after-hours intake), real estate (lead qualification), home services (booking).
 
 ---
 
