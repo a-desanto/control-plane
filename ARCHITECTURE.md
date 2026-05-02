@@ -335,6 +335,82 @@ https://openrouter.ai/api/v1/messages
 
 ---
 
+## Managed service stack — recommended subprocessors
+
+For categories where best-of-breed managed services exist with BAA support, integrate rather than build from scratch. This shortcuts ~6-12 months of in-house engineering and delivers higher quality than DIY at SMB scale. Each managed service adds a subprocessor to the BAA chain — they all offer BAA, but every addition must be enumerated in Phase 19 compliance documentation.
+
+### Core stack — every client deployment
+
+| Capability | Service | Replaces / accelerates | BAA | Notes |
+|-----------|---------|----------------------|-----|-------|
+| LLM (Claude Sonnet, Haiku, Opus) | AWS Bedrock | Direct Anthropic API | ✅ AWS BAA | Single chain for LLM + embeddings + storage |
+| Embeddings (1024-dim retrieval) | AWS Bedrock — Cohere embed-english-v3 | Voyage AI / OpenAI direct | ✅ AWS BAA | Same BAA as LLM |
+| Object storage (backups + assets) | AWS S3 | Cloudflare R2 (no BAA at SMB pricing) | ✅ AWS BAA | Lifecycle policies + Glacier for cold backups |
+| Document parsing (OCR + form extraction) | AWS Textract | DIY OCR pipeline | ✅ AWS BAA | Medical-tuned variant available |
+| Voice agents (real-time conversational) | Retell AI (Healthcare tier) | Phase 13 from-scratch (Pipecat / OpenAI Realtime) | ✅ Retell Healthcare BAA | ~$0.10/min vs $0.20-0.40 raw real-time APIs |
+| SaaS tool integrations | Composio | Custom OAuth + API per service | ✅ Composio Enterprise BAA | 300+ pre-built tool integrations exposed as MCP |
+| Browser automation | **Anthropic Computer Use direct (via Bedrock)** as MVP; **Browserbase** as scale-up | Phase 7 browser-use worker from scratch | ✅ AWS BAA covers Computer Use; Browserbase Enterprise BAA when added | Start with Computer Use direct (already in AWS BAA, no new vendor); add Browserbase only when browser-task volume justifies managed Chromium per-minute pricing |
+| LLM observability + traces | Langfuse (self-hosted) | DIY tracing | N/A — self-hosted, data stays on-VPS | Inside the BAA boundary |
+| Monitoring + alerting | Healthchecks.io + Discord webhooks | Custom monitoring | N/A — operational, no PHI | Per RUNBOOK §8 |
+
+### Optional / vertical-specific
+
+Add these per-client as workflows demand:
+
+| Capability | Service | When to add |
+|-----------|---------|------------|
+| Speech-to-text (raw audio) | AssemblyAI or AWS Transcribe | When meeting/voicemail volume exceeds Granola coverage |
+| AI web search | Tavily | When agents need current external data (regulations, news, market data) |
+| E-signature | DocuSign or Anvil | Legal/medical/real estate verticals with signed-document workflows |
+| Usage-based billing | Metronome or Orb | When pricing tier includes metered usage above flat fees (Phase 21) |
+| Transactional email | Postmark or AWS SES | Already covered by SES under AWS BAA; Postmark only if you want better deliverability dashboard |
+| Voice (outbound campaigns) | Bland.ai | If high-volume outbound voice (vs Retell's inbound-focused strength) |
+
+### What we are explicitly NOT using
+
+- **Voyage AI for embeddings** — quality marginal advantage doesn't justify separate vendor + BAA chain at SMB scale. Cohere via Bedrock is the chosen path.
+- **OpenRouter for production** — no BAA chain. Used during Hostinger build phase only; retired at HIPAA migration cutover.
+- **OpenAI direct or Azure OpenAI** — Anthropic Claude is the chosen LLM family; OpenAI's models would require prompt rework on existing agents and don't add capability.
+- **Building voice from scratch (Pipecat / LiveKit / raw OpenAI Realtime)** — Retell is faster and cheaper.
+- **Browserbase as MVP** — Anthropic Computer Use direct (via Bedrock, already under AWS BAA) is preferred for MVP scale. Add Browserbase only when browser-task volume justifies managed Chromium per-minute pricing.
+- **Pinecone / Weaviate / managed vector DBs** — pgvector inside the existing Postgres is sufficient until 50M+ chunks per client.
+- **LangChain Cloud / LangGraph Cloud / CrewAI Cloud** — paperclipai's heartbeat + skills + multi-agent patterns (Phase 10) cover the orchestration job. No additional orchestration layer needed.
+- **Multi-tenant SaaS architecture** — undermines the MSP-managed-service value proposition. Per-VPS isolation is the canonical pattern. See "Considered and deferred: pod model" in the Canonical deployment pattern section above.
+- **Single-vertical focus** — Tony's MSP serves multiple verticals; the platform serves all five via base tier + vertical-extension add-ons. Single-vertical positioning is a SaaS-startup framing that doesn't apply to MSP business model.
+
+### Vendor maturity caveats (have a fallback plan)
+
+For young vendors (founded ≤2024), document a fallback path in case of pivot, acquisition, or pricing change:
+- **Composio** (founded 2023) — fallback: Pipedream Connect (founded 2018, more mature) or n8n self-hosted
+- **Browserbase** (founded 2024) — fallback: Anthropic Computer Use direct (already preferred MVP) or Playwright self-hosted
+- **Retell** (founded 2024) — fallback: Vapi.ai (functionally equivalent) or build minimal Pipecat-based replacement
+
+For mature vendors (Anthropic, AWS, Cloudflare, Stripe, Linode/Akamai, Hostinger), no fallback documentation needed — risk profile is acceptable.
+
+### Architectural extension model — add-on services
+
+The platform extends per-client via the add-on service framework. Each add-on is a discrete bundle of paperclipai skills + agent configurations + external integrations + workflow definitions + Stripe pricing that installs/uninstalls cleanly per client.
+
+This exploits paperclipai's native `company_skills` table — different clients can have different skills installed without affecting any other client. Add-ons formalize this into a packaged, priced product unit.
+
+See `ADD_ON_SERVICES.md` for the full catalog (Voice/Marketing/Sales/Support/Document Workflows/Vertical Extensions/Premium Reasoning/Custom), pricing, install/uninstall mechanics, vertical bundles, and ROI math per add-on.
+
+The architectural pattern for adding a new add-on:
+1. Build it once for a paying client as a custom workflow
+2. Package as add-on bundle (skills + agents + integrations + workflows + pricing.json + install scripts)
+3. Generalize: parameterize client-specific names and configs
+4. Add to catalog
+5. Test install/uninstall on a clean test client
+6. Sell as a productized add-on to other clients
+
+The base tier is also architecturally an add-on bundle (just one that's required, not optional). Future additions to base tier (or removals) follow the same install/uninstall mechanics.
+
+### Subprocessor enumeration for compliance
+
+Phase 19 compliance summary must list every subprocessor that touches PHI with: name, BAA status, BAA effective date, data category processed (text/audio/document/etc.), and revocation procedure. Updating this list is part of every "add a new managed service" decision.
+
+---
+
 ## Target architecture (in flight) — high-end SMB business OS
 
 The sections above describe the live system as of 2026-04-30. This section captures the planned direction — components that close the gap between "capable agentic platform" and "business operating system for SMBs." Each component has a Phase number in `ROADMAP.md` and a concrete tech choice; nothing here is research-grade.
