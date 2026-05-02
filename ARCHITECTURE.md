@@ -2,11 +2,25 @@
 
 ## Status
 
-**v3.3 — high-end SMB business OS direction.** This document describes both the live system (sections 1–10, deployed and working) and the target architecture (section "Target architecture (in flight)") that closes the gap to a credible high-end SMB business OS.
+**v3.4 — MSP-managed AI services for SMBs.** This document describes both the live system (sections 1–10, deployed and working) and the target architecture (section "Target architecture (in flight)") that closes the gap to a productized MSP AI-services offering.
 
-Live deployment last verified 2026-04-28: Path B (openclaw-worker) and OpenCode native adapter both confirmed working end-to-end (Phase 3B + Phase 3C smoke tests). Target architecture phases (6–13) tracked in `ROADMAP.md`.
+Live deployment last verified 2026-04-28: Path B (openclaw-worker) and OpenCode native adapter both confirmed working end-to-end (Phase 3B + Phase 3C smoke tests). Target architecture phases (5.5–21) tracked in `ROADMAP.md`. Add-on service catalog in `ADD_ON_SERVICES.md`. End-to-end readiness in `PLATFORM_READINESS.md`.
 
-**Positioning:** per-client VPS isolation, paperclip as orchestration brain, MCP-style tool protocol, Coolify-managed fleet. Sold as a managed monthly service — the client's "operating system." Differentiates from horizontal SaaS via data isolation, compliance posture, and verticalized workflow library (vertical pick is an open strategic question).
+**Positioning (resolved 2026-05-02):** the platform is an AI services layer added to an existing MSP business. Tony is an MSP serving SMB clients across 5 verticals (legal, medical, accounting, home services, real estate). The control-plane platform automates AI ops for these clients as an upsell to the existing managed services relationship.
+
+**Commercial structure:**
+- Base tier ($499 Starter / $1,499 Pro / $4,999 Enterprise) — every paying client gets the AI ops foundation
+- Add-on services — plug-and-play modular services (Voice/Marketing/Sales/Support/etc.) priced separately and installed per-client based on what they buy
+- Vertical bundles — pre-packaged combinations for each vertical (Medical Practice Bundle, Legal Firm Bundle, etc.)
+- See `ADD_ON_SERVICES.md` for the full catalog
+
+**Architectural canonical pattern (resolved 2026-05-02):**
+- One client per VPS. Per-VPS isolation is the MSP-aligned moat — clients trust dedicated infrastructure they pay for. Pods (multi-client per VPS) is a future option deferred until client count justifies it; not the canonical pattern.
+- Multi-provider tiered. Hostinger for non-compliance (~$15-30/mo VPS), Linode Business for HIPAA / compliance (~$45-60/mo VPS, BAA available), AWS EC2 for premium / enterprise (~$80-150/mo VPS). Same git repo, same software stack, deployed to whichever VPS provider matches the client tier.
+- IaC-automated at 3-5 client scale (Terraform + Ansible — see ROADMAP Phase 5.7).
+- Single Coolify control instance orchestrates all client VPSes regardless of provider.
+
+Differentiates from competitors via: existing MSP relationships (warm pipeline), per-client managed-service value (vs self-serve SaaS), vertical workflow depth via add-on extensions (vs horizontal AI assistants), dedicated infrastructure (vs shared SaaS), HIPAA-and-other compliance posture (vs consumer-grade tools). Competitive set is other MSPs not yet offering productized AI services, not Lindy / Zapier / Beam AI direct-to-business plays.
 
 ---
 
@@ -62,9 +76,12 @@ All apps deployed on the canonical VPS (`cfpa.sekuirtek.com`), managed by Coolif
 | n8n | `tzek9xu60li84qqa8w68bgjh` | `https://n8n.cfpa.sekuirtek.com` | Automation workflows; calls paperclipai via board API key |
 | Flowise | `hlw1a5tdz7mu9o4r183uq96y` | `https://flowise.cfpa.sekuirtek.com` | Visual LLM chain builder |
 | activepieces | `l2wdubw2dwgfcaj38iidtcez` | `https://activepieces.cfpa.sekuirtek.com` | Automation alternative to n8n |
-| openclaw-pgvector-db | `xcn2es4vmn01a1ug0w99vdr3` | internal only | Shared pgvector store. Hosts: `openclaw` db (reserved for future openclaw vector use, currently empty); `client_knowledge` db (Phase 6 RAG — client documents + embeddings + ACLs) |
+| paperclip-mcp | `p13q05uj5ehqi866jp27g6fg` | internal only (port 9011) | Operator MCP — exposes paperclip REST API as MCP tools so Claude CLI manages paperclipai conversationally instead of via curl/psql |
+| client-knowledge-db | `xcn2es4vmn01a1ug0w99vdr3` | internal only | Phase 6 RAG: shared Postgres + pgvector. Hosts `client_knowledge` database (schema deployed, ingestion + retrieval pending Phase 6 Stages 2-3); `openclaw` database reserved for future openclaw vector use |
+| cfpa-watchdog | standalone docker (not Coolify-managed) | internal only | Cost watchdog — polls costs/by-agent, pauses agents on threshold breach. See RUNBOOK §8 |
+| langfuse-web (etc.) | self-hosted on srv1408380 | `https://langfuse.cfpa.sekuirtek.com` | LLM observability + trace store. PR #22 instrumented openrouter-proxy and openclaw-worker for trace emission |
 
-All containers run on the `coolify` Docker network. openrouter-proxy, openclaw-worker, and openclaw-pgvector-db are `traefik.enable=false` — internal only.
+All containers run on the `coolify` Docker network. openrouter-proxy, openclaw-worker, paperclip-mcp, client-knowledge-db are `traefik.enable=false` — internal only.
 
 ### Decommissioned (fully deleted 2026-04-27)
 
@@ -74,6 +91,98 @@ All containers run on the `coolify` Docker network. openrouter-proxy, openclaw-w
 | paperclip-backend | `kz9wfv4by3aggvz1eaw2kol4` | Custom FastAPI brain replaced by paperclipai |
 
 See `PIVOT_TO_PAPERCLIP.md` for the full history. Code recovery via git history if ever needed.
+
+---
+
+## Canonical deployment pattern — 1-per-VPS, multi-provider, IaC-automated
+
+This section documents the canonical pattern for deploying the platform per client. Resolved 2026-05-02.
+
+### One client per VPS
+
+Each paying client gets a dedicated VPS running their own paperclipai + workers + observability stack. Per-VPS isolation is the MSP-aligned architectural pattern — clients pay for managed-service-with-dedicated-infrastructure, which is what their existing MSP relationship trains them to expect. Multi-tenant SaaS undermines the managed-service value proposition; per-VPS reinforces it.
+
+This means:
+- Client A's data, agents, workflows, and configurations live entirely on their VPS
+- Client B's failure modes never affect Client A
+- Per-client compliance is a per-VPS decision (HIPAA medical client gets BAA-covered host; non-compliance retail client doesn't pay for compliance overhead)
+- Per-client capacity scaling is independent (resize one VPS without affecting others)
+- Per-client provider choice is independent
+
+### Provider tiering
+
+Each VPS is hosted on whichever provider matches the client's compliance and pricing tier:
+
+| Tier | Provider | VPS sizing | Compliance | Per-VPS cost |
+|------|----------|------------|------------|--------------|
+| General SMB (non-compliance) | Hostinger | KVM 2-4 (4-8GB RAM) | None | $15-30/mo |
+| Compliance (HIPAA, SOX, legal privilege) | Linode/Akamai Business | KVM 8GB+ | BAA available, SMB-friendly pricing | $45-60/mo |
+| Premium / Enterprise | AWS EC2 | m5.large or larger | Full AWS BAA, native Bedrock integration | $80-150/mo |
+
+The provider choice is made per-client at onboarding based on their needs. All providers run identical software stacks — same paperclipai, same workers, same observability, same git repo. The difference is purely the underlying infrastructure tier.
+
+### Single Coolify control instance
+
+A single Coolify instance (currently on the control VPS at 187.77.213.142) manages all client VPSes regardless of provider. Adding a new VPS = adding a server to Coolify with SSH credentials. Deploying code = git push triggers Coolify to deploy to all relevant VPSes in parallel.
+
+This means:
+- One source of truth for deployments (Coolify dashboard)
+- One git repo deploys everywhere
+- Multi-provider ops is one operational workflow, not three
+- Same monitoring, alerting, deployment patterns across the fleet
+
+### IaC automation at 3-5 client scale
+
+Once client count crosses 3-5, manual VPS provisioning becomes a real time sink. Phase 5.7 of `ROADMAP.md` introduces Infrastructure-as-Code automation:
+- Terraform (or OpenTofu) declares VPSes per-client based on tier variables
+- Ansible configures the OS, Coolify agent, firewall, monitoring agents
+- Onboarding script orchestrates Terraform → Ansible → Coolify API → paperclipai company creation in one command
+- State storage in S3 (~$0.10/mo)
+
+Cost: $0 in tooling licenses, ~3 weeks engineering investment. Pays back within 5-7 client onboardings.
+
+### Deployment topology at scale
+
+```
+                  ┌──────────────────────────────────┐
+                  │ Coolify Control + Langfuse       │
+                  │  187.77.213.142                  │
+                  └────────────────┬─────────────────┘
+                                   │ manages all servers below
+        ┌──────────────────────────┼──────────────────────────────┐
+        ▼                          ▼                              ▼
+┌────────────────────┐   ┌────────────────────┐         ┌────────────────────┐
+│   HOSTINGER        │   │   LINODE Business  │         │   AWS EC2          │
+│   (general SMB)    │   │   (HIPAA / compl)  │         │   (premium)        │
+├────────────────────┤   ├────────────────────┤         ├────────────────────┤
+│ Client A VPS       │   │ Caring First VPS   │         │ Enterprise client  │
+│  (retail)          │   │  (medical)         │         │  (high-value)      │
+│ ~$15/mo            │   │ ~$45/mo            │         │ ~$80-150/mo        │
+├────────────────────┤   ├────────────────────┤         └────────────────────┘
+│ Client B VPS       │   │ Medical Client #2  │
+│  (real estate)     │   │  ~$45/mo           │
+│ ~$15/mo            │   ├────────────────────┤
+├────────────────────┤   │ Law Firm VPS       │
+│ Client C VPS       │   │  ~$45/mo           │
+│  (accounting)      │   └────────────────────┘
+│ ~$15/mo            │
+└────────────────────┘
+```
+
+Same codebase. Different VPS providers. Per-client tier choice. This is the architecture-of-record going forward.
+
+### Considered and deferred: pod model (5-clients-per-VPS)
+
+The "pod" pattern (5 clients sharing one VPS with paperclipai's native multi-company support) was extensively considered 2026-05-02 and deferred — not the canonical pattern.
+
+Reasons:
+- 1-per-VPS aligns with MSP managed-service value proposition; pods undermine it
+- Per-VPS isolation is a marketing point clients value; pod isolation is invisible
+- Tenant-scoping bugs in custom code = data leakage between clients on same pod = catastrophic for HIPAA
+- Operational complexity savings of pods only matter past ~15-20 clients; 1-per-VPS + IaC handles 1-15 clients cleanly
+- Compliance is simpler per-VPS (per-client BAA chain) than per-pod (mixing rules)
+
+Pod model remains an option for the future as a low-tier offering when client count exceeds ~15-20 and ops burden justifies engineering investment. If introduced, pods serve only the lowest-cost tier (general SMB on shared infrastructure); compliance and premium clients always remain 1-per-VPS as upsell. Not on the current roadmap.
 
 ---
 
@@ -226,7 +335,83 @@ https://openrouter.ai/api/v1/messages
 
 ---
 
-## Target architecture (in flight) — high-end SMB business OS
+## Managed service stack — recommended subprocessors
+
+For categories where best-of-breed managed services exist with BAA support, integrate rather than build from scratch. This shortcuts ~6-12 months of in-house engineering and delivers higher quality than DIY at SMB scale. Each managed service adds a subprocessor to the BAA chain — they all offer BAA, but every addition must be enumerated in Phase 19 compliance documentation.
+
+### Core stack — every client deployment
+
+| Capability | Service | Replaces / accelerates | BAA | Notes |
+|-----------|---------|----------------------|-----|-------|
+| LLM (Claude Sonnet, Haiku, Opus) | AWS Bedrock | Direct Anthropic API | ✅ AWS BAA | Single chain for LLM + embeddings + storage |
+| Embeddings (1024-dim retrieval) | AWS Bedrock — Cohere embed-english-v3 | Voyage AI / OpenAI direct | ✅ AWS BAA | Same BAA as LLM |
+| Object storage (backups + assets) | AWS S3 | Cloudflare R2 (no BAA at SMB pricing) | ✅ AWS BAA | Lifecycle policies + Glacier for cold backups |
+| Document parsing (OCR + form extraction) | AWS Textract | DIY OCR pipeline | ✅ AWS BAA | Medical-tuned variant available |
+| Voice agents (real-time conversational) | Retell AI (Healthcare tier) | Phase 13 from-scratch (Pipecat / OpenAI Realtime) | ✅ Retell Healthcare BAA | ~$0.10/min vs $0.20-0.40 raw real-time APIs |
+| SaaS tool integrations | Composio | Custom OAuth + API per service | ✅ Composio Enterprise BAA | 300+ pre-built tool integrations exposed as MCP |
+| Browser automation | **Anthropic Computer Use direct (via Bedrock)** as MVP; **Browserbase** as scale-up | Phase 7 browser-use worker from scratch | ✅ AWS BAA covers Computer Use; Browserbase Enterprise BAA when added | Start with Computer Use direct (already in AWS BAA, no new vendor); add Browserbase only when browser-task volume justifies managed Chromium per-minute pricing |
+| LLM observability + traces | Langfuse (self-hosted) | DIY tracing | N/A — self-hosted, data stays on-VPS | Inside the BAA boundary |
+| Monitoring + alerting | Healthchecks.io + Discord webhooks | Custom monitoring | N/A — operational, no PHI | Per RUNBOOK §8 |
+
+### Optional / vertical-specific
+
+Add these per-client as workflows demand:
+
+| Capability | Service | When to add |
+|-----------|---------|------------|
+| Speech-to-text (raw audio) | AssemblyAI or AWS Transcribe | When meeting/voicemail volume exceeds Granola coverage |
+| AI web search | Tavily | When agents need current external data (regulations, news, market data) |
+| E-signature | DocuSign or Anvil | Legal/medical/real estate verticals with signed-document workflows |
+| Usage-based billing | Metronome or Orb | When pricing tier includes metered usage above flat fees (Phase 21) |
+| Transactional email | Postmark or AWS SES | Already covered by SES under AWS BAA; Postmark only if you want better deliverability dashboard |
+| Voice (outbound campaigns) | Bland.ai | If high-volume outbound voice (vs Retell's inbound-focused strength) |
+
+### What we are explicitly NOT using
+
+- **Voyage AI for embeddings** — quality marginal advantage doesn't justify separate vendor + BAA chain at SMB scale. Cohere via Bedrock is the chosen path.
+- **OpenRouter for production** — no BAA chain. Used during Hostinger build phase only; retired at HIPAA migration cutover.
+- **OpenAI direct or Azure OpenAI** — Anthropic Claude is the chosen LLM family; OpenAI's models would require prompt rework on existing agents and don't add capability.
+- **Building voice from scratch (Pipecat / LiveKit / raw OpenAI Realtime)** — Retell is faster and cheaper.
+- **Browserbase as MVP** — Anthropic Computer Use direct (via Bedrock, already under AWS BAA) is preferred for MVP scale. Add Browserbase only when browser-task volume justifies managed Chromium per-minute pricing.
+- **Pinecone / Weaviate / managed vector DBs** — pgvector inside the existing Postgres is sufficient until 50M+ chunks per client.
+- **LangChain Cloud / LangGraph Cloud / CrewAI Cloud** — paperclipai's heartbeat + skills + multi-agent patterns (Phase 10) cover the orchestration job. No additional orchestration layer needed.
+- **Multi-tenant SaaS architecture** — undermines the MSP-managed-service value proposition. Per-VPS isolation is the canonical pattern. See "Considered and deferred: pod model" in the Canonical deployment pattern section above.
+- **Single-vertical focus** — Tony's MSP serves multiple verticals; the platform serves all five via base tier + vertical-extension add-ons. Single-vertical positioning is a SaaS-startup framing that doesn't apply to MSP business model.
+
+### Vendor maturity caveats (have a fallback plan)
+
+For young vendors (founded ≤2024), document a fallback path in case of pivot, acquisition, or pricing change:
+- **Composio** (founded 2023) — fallback: Pipedream Connect (founded 2018, more mature) or n8n self-hosted
+- **Browserbase** (founded 2024) — fallback: Anthropic Computer Use direct (already preferred MVP) or Playwright self-hosted
+- **Retell** (founded 2024) — fallback: Vapi.ai (functionally equivalent) or build minimal Pipecat-based replacement
+
+For mature vendors (Anthropic, AWS, Cloudflare, Stripe, Linode/Akamai, Hostinger), no fallback documentation needed — risk profile is acceptable.
+
+### Architectural extension model — add-on services
+
+The platform extends per-client via the add-on service framework. Each add-on is a discrete bundle of paperclipai skills + agent configurations + external integrations + workflow definitions + Stripe pricing that installs/uninstalls cleanly per client.
+
+This exploits paperclipai's native `company_skills` table — different clients can have different skills installed without affecting any other client. Add-ons formalize this into a packaged, priced product unit.
+
+See `ADD_ON_SERVICES.md` for the full catalog (Voice/Marketing/Sales/Support/Document Workflows/Vertical Extensions/Premium Reasoning/Custom), pricing, install/uninstall mechanics, vertical bundles, and ROI math per add-on.
+
+The architectural pattern for adding a new add-on:
+1. Build it once for a paying client as a custom workflow
+2. Package as add-on bundle (skills + agents + integrations + workflows + pricing.json + install scripts)
+3. Generalize: parameterize client-specific names and configs
+4. Add to catalog
+5. Test install/uninstall on a clean test client
+6. Sell as a productized add-on to other clients
+
+The base tier is also architecturally an add-on bundle (just one that's required, not optional). Future additions to base tier (or removals) follow the same install/uninstall mechanics.
+
+### Subprocessor enumeration for compliance
+
+Phase 19 compliance summary must list every subprocessor that touches PHI with: name, BAA status, BAA effective date, data category processed (text/audio/document/etc.), and revocation procedure. Updating this list is part of every "add a new managed service" decision.
+
+---
+
+## Target architecture (in flight) — MSP-managed AI services for SMB
 
 The sections above describe the live system as of 2026-04-30. This section captures the planned direction — components that close the gap between "capable agentic platform" and "business operating system for SMBs." Each component has a Phase number in `ROADMAP.md` and a concrete tech choice; nothing here is research-grade.
 

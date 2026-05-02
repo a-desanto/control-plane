@@ -60,6 +60,91 @@ Coolify → Add Server → apply template → set per-client env vars
 
 ---
 
+## Phase 5.5 — Operator fleet dashboard (Grafana)
+
+**Status:** Not started. **Priority: build at 3-5 client scale.** Critical for MSP fleet visibility once you have more than 1-2 client VPSes to oversee.
+
+**Goal:** centralized operator dashboard showing the state of every client VPS at a glance — cost, health, agents, alerts, capacity. Replaces "SSH into each VPS to check" with "scan one screen for the whole fleet."
+
+**Stack** (all open-source, runs on existing control VPS at 187.77.213.142):
+- Grafana — dashboards + alerting UI
+- Prometheus — metrics scraping (per-VPS node-exporter + paperclipai metrics endpoint)
+- Loki + Promtail — centralized log aggregation across all client VPSes (this is Phase 14B work — the same Loki instance serves both purposes)
+- Existing data sources — Langfuse (cost + traces), paperclipai REST (agent state), Coolify API (VPS + deploy health)
+
+**Three dashboards to build:**
+1. **Fleet Overview** — single screen, one row per client. Columns: name, tier, provider, active agents, MTD cost, health, last incident. Sortable, filterable, color-coded by status.
+2. **Per-Client Drill-Down** — selected client only. Cost trend, agent activity, workflow status, recent traces (deep link to Langfuse), pending approvals, last 10 heartbeats.
+3. **Operations** — fleet-wide alerts, watchdog triggers, backup status, capacity warnings (disk, RAM, CPU per VPS), provider distribution.
+
+**Data wiring** (per VPS, automated by Ansible at IaC time):
+- node-exporter for system metrics (CPU/RAM/disk/network)
+- promtail shipping container logs to control-VPS Loki
+- paperclipai exposes Prometheus metrics (or scraped via API endpoint)
+
+**Acceptance:**
+- Operator can answer "which client cost spiked yesterday?" in <30 seconds without SSH
+- Fleet overview loads <2 seconds for up to 20 client VPSes
+- All three dashboards have working alerts (Discord / email)
+- Per-client deep links to Langfuse for trace investigation
+
+**Effort:** 5-7 days focused work, can be split across 2 weeks part-time.
+
+**Cost:** $0 additional infrastructure (runs on existing control VPS). Optional ~$5/mo extra disk for Loki retention if logs grow large.
+
+**Open input:** Grafana auth strategy — basic auth for operator-only at MVP, OAuth (Google Workspace SSO) later when you add team members.
+
+---
+
+## Phase 5.7 — Infrastructure-as-Code automation (Terraform + Ansible)
+
+**Status:** Not started. **Build trigger: 3-5 client scale** (when manual VPS provisioning starts costing real time).
+
+**Goal:** declarative templates that automate VPS provisioning, configuration, and ongoing fleet management. Replaces manual VPS-by-VPS clicks with one-command client onboarding.
+
+**Stack** (all open-source, $0/mo)
+- Terraform (or OpenTofu for cleaner licensing) — declarative VPS + Coolify resource provisioning
+- Ansible — VPS configuration (Docker, firewall, time sync, monitoring agents, Coolify agent install)
+- Coolify API — application-level deployment within VPSes (already in use)
+- GitHub Actions — CI/CD that triggers Terraform/Ansible on commits
+- State storage — S3 backend for Terraform state (~$0.10/mo)
+
+**What it enables**
+- One-command client onboarding: `./scripts/onboard-client.sh medical-practice-2 --tier compliance` runs Terraform → Ansible → Coolify → paperclipai company creation in ~30 minutes vs 4 hours manual
+- Drift detection: `terraform plan` flags when a VPS has drifted from canonical config (manual edits, missed updates)
+- Versioned infrastructure: every config change is git-tracked
+- Disaster recovery: rebuild any VPS from template in ~30 minutes
+- Multi-provider abstraction: Terraform speaks Hostinger, Linode, AWS, DO, Vultr natively — provider per client is a variable change
+- Bulk fleet operations: Ansible playbook updates all VPSes' OS config in one run
+
+**Per-client variables (template inputs)**
+```hcl
+client_name        = "medical-practice-2"
+tier               = "compliance-hipaa"   # or "general-smb" or "premium"
+provider           = "linode-business"     # or "hostinger" or "aws"
+region             = "us-east"
+vps_size           = "g6-standard-2"       # 4GB RAM
+compliance_baa     = true
+backup_destination = "s3://cfpa-backups/medical-practice-2/"
+```
+
+**Acceptance**
+- Adding a new client = run one script, 30 minutes start to ready-for-paperclipai-bootstrap
+- All existing client VPSes (post-build) imported into Terraform state for drift detection
+- Disaster recovery procedure: `terraform destroy && terraform apply` rebuilds a VPS from scratch + restore data from backup, end-to-end <60 minutes
+- `terraform plan` runs nightly via GitHub Actions, alerts on drift
+
+**Effort**
+~3 weeks of focused work, can spread across 6 weeks part-time:
+- Week 1: Terraform foundation + provider modules
+- Week 2: Ansible playbooks + Coolify integration
+- Week 3: Onboarding scripts + monitoring + GitHub Actions CI/CD
+
+**When to build**
+Don't build before client #3. With 1-2 clients, manual provisioning is fine and IaC is over-engineering for hypothetical future state. At client #3-4, the time saved on onboarding pays back the IaC investment within 5-7 client onboardings. Trigger this phase concurrently with Phase 5.5 (operator dashboard) — both are infrastructure visibility/automation work.
+
+---
+
 ## Phase 6 — Knowledge layer (RAG over client data)
 
 **Status:** Stage 1 done 2026-05-01: pgvector deployed via repurposed openclaw-pgvector-db container. New `client_knowledge` database + schema in place. Stages 2–5 (ingestion worker, retrieval MCP, verification) pending. **Priority: highest** — this is the single biggest credibility gap for "client's operating system" positioning.
@@ -94,13 +179,37 @@ Once Langfuse is collecting traces (Phase 14), add Promptfoo or Braintrust for o
 
 ---
 
-## Phase 9 — End-client UI
+## Phase 9 — End-client UI + operator UI extension
 
-**Status:** Not started. **Priority: high — required before second client onboards.**
+**Status:** Not started. **Priority: high — end-client UI required before second client onboards.** paperclipai's native UI is for the operator, not the SMB owner.
 
-Separate Next.js app per VPS. Scoped to client's workflows. Conversational front door, document drop zone, agent activity feed, calendar view, approval queue, daily digest. Calls paperclipai's REST API via the client's session — no direct DB access. Branded per-client.
+### End-client UI (per-VPS app, ships first)
+
+Separate Next.js app per VPS. Scoped to client's workflows. Conversational front door, document drop zone, agent activity feed, calendar view, approval queue, "what did my agents do today" daily digest. Calls paperclipai's REST API via the client's session — no direct DB access. Branded per-client.
 
 **Acceptance:** an SMB owner can log in, drop a document, ask an agent to do something, see what happened, approve a sensitive action — without ever touching paperclipai's operator UI. White-labelable per client.
+
+### Operator UI extension (centralized, ships at 10+ clients)
+
+At 10+ client scale, the Grafana operator dashboard (Phase 5.5) starts hitting its limits — querying across many clients, drilling into per-client context, conversational ops, multi-client search, and team-collaboration features all benefit from a custom UI.
+
+**Architecture:** the same Next.js codebase that powers the end-client UI gains a separate operator route tree (`/admin/...`) with its own auth, role-based access, and views. Different routes, different roles, same codebase — operator gets fleet-wide views, end-clients get scoped views.
+
+**Operator UI capabilities (extending Grafana):**
+- Multi-client search and filter ("show me all clients on Linode pods")
+- Conversational ops via embedded paperclip-mcp ("create a workflow for client X")
+- Drill-down per-client with linked client docs, support history, billing status
+- Team views with role-based access (operator / support / read-only)
+- Per-client deep-link integration with Grafana, Langfuse, Coolify
+- Cross-client cost reporting + invoice generation (when Phase 21 ships)
+
+**Effort:** ~2-3 weeks once Phase 9 end-client UI scaffolding exists (extends, doesn't duplicate).
+
+**Cost:** ~$5-10/mo additional (one Coolify app on control VPS).
+
+**Acceptance:** at 10+ clients, operator can run all daily fleet management without leaving the operator UI. Grafana stays as a deeper-dive technical tool but isn't the daily driver anymore.
+
+**When to build:** trigger at 8-10 clients, when Grafana-only operations starts costing >5 hours/week. Don't pre-build; let the friction tell you when.
 
 ---
 
@@ -124,11 +233,56 @@ Extend `agent_wakeup_requests` with `external_event` source type. n8n webhook pa
 
 ---
 
-## Phase 12 — Workflow library (universal-first, vertical extensions)
+## Phase 12 — Base tier workflows + add-on service catalog + vertical bundles
 
-**Status:** Not started. Strategy resolved 2026-04-30: **horizontal platform with vertical extensions** — build the universal SMB workflow set first (works for every client regardless of vertical), then layer vertical-specific workflows as individual clients pull on them.
+**Status:** Not started. **Strategy resolved 2026-05-02:** base tier + plug-and-play add-on services + vertical bundles, replacing the prior "universal seven for all clients" approach.
 
-**Detailed workflow specs and build order:** see `WORKFLOWS.md`. Each of the seven workflows is documented with trigger, data sources, integrations, agent skills, MVP vs full scope, and platform-phase dependencies. The build sequence is in the same doc.
+See `ADD_ON_SERVICES.md` for the full add-on catalog, pricing, install mechanics, and ROI math per add-on.
+
+### Phase 12A — Base tier workflows (every paying client gets these)
+
+3-4 foundational workflows in the base tier:
+- Document organization & search — Phase 6 RAG layer in production form
+- Email triage / inbox management — incoming email classification + drafting
+- Operator-managed onboarding — setup, training, ongoing support
+- Activity reporting + cost transparency — daily digest, monthly summary
+
+These ship as part of base tier ($499-4,999/mo per client). Build first.
+
+### Phase 12B — Add-on service catalog (priced separately, installed per-client)
+
+Each add-on is a discrete bundle of skills + agents + integrations + workflows + Stripe pricing that installs/uninstalls cleanly. Build add-ons in priority order based on what paying clients demand:
+- Voice (Retell-powered) — see Phase 13
+- Marketing & Social Media
+- Sales Outreach
+- Customer Support
+- Document Workflows
+- Vertical Extensions (Legal, Medical, Accounting, Home Services, Real Estate)
+- Premium Reasoning (Opus tier)
+- Custom Workflow Development (one-off engagements)
+
+Install via `./scripts/install-addon.sh --client X --addon Y`. Provisions skills, agents, integrations, billing in one command.
+
+**Build order:** don't build add-ons speculatively. Build whichever add-on the next paying client demands first. Generalize after 2-3 clients want it. See `ADD_ON_SERVICES.md` "Adding a new add-on" section.
+
+### Phase 12C — Vertical bundles (pre-packaged combinations)
+
+Pre-configured combinations of add-ons priced ~10% below sum-of-parts. Easier to sell, clear pricing math, vertical-specific:
+- Medical Practice Bundle: Pro base + Voice + Document Workflows + Medical Vertical Extension = $2,499/mo
+- Legal Firm Bundle: Pro base + Document Workflows + Legal Vertical Extension + Premium Reasoning = $2,799/mo
+- Real Estate Brokerage Bundle: Pro base + Voice + Marketing + Sales Outreach + Real Estate Vertical Extension = $2,999/mo
+- Accounting Firm Bundle: Pro base + Document Workflows + Accounting Vertical Extension + Sales Outreach = $2,499/mo
+- Home Services Bundle: Pro base + Voice + Marketing + Home Services Vertical Extension = $2,499/mo
+
+### Acceptance
+
+- Base tier workflows ship as part of every client deployment, no per-workflow configuration needed
+- Operator can install any add-on for any client via one CLI command (or eventually via operator UI in Phase 9)
+- Each add-on has clear pricing, ROI math, and Stripe SKU
+- Vertical bundles displayed in operator UI with one-click install
+- Discovery-driven upselling: operator reviews per-client usage data monthly, suggests next add-on with ROI math
+
+**Open input:** which add-on to productize first depends on what existing/prospect clients demand. Defer the decision until you have 2-3 paying clients asking for the same capability.
 
 ### Universal SMB workflows (build first, ship to every client)
 
@@ -165,13 +319,24 @@ Layered on top of the universal seven. Tony's existing client relationships span
 
 ---
 
-## Phase 13 — Voice interface (year 2)
+## Phase 13 — Voice add-on (Retell integration)
 
-**Status:** Deferred — year 2 priority.
+**Status:** Not started. **Reframed 2026-05-02:** voice ships as a Retell-powered add-on service, not a from-scratch build.
 
-Pipecat or LiveKit + paperclip MCP tool for inbound/outbound calls. Real-time voice models (OpenAI Realtime, Anthropic voice). First 10 clients should be stable on text/document workflows before voice ships.
+Originally planned as Pipecat/LiveKit/OpenAI Realtime infrastructure. Reframed: Retell AI is a managed voice-agent platform with HIPAA Healthcare tier and BAA. Integration is ~1-2 weeks instead of 6-12 months of from-scratch engineering.
 
-**Acceptance:** an agent can answer an inbound call, identify the caller, run a workflow (e.g. take an appointment), and post the resulting issue/note back to paperclip. Outbound: an agent can place an outreach call from a campaign workflow.
+**Stack:**
+- Retell AI account (Healthcare tier for HIPAA clients)
+- Phone numbers provisioned via Retell
+- Skills: voice-receptionist, voice-scheduler, voice-message-taker, outbound-caller
+- Agent: voice-agent (real-time conversational, runs in Retell, callbacks paperclipai for state)
+- Workflows: inbound-call, appointment-booking, outbound-campaign
+
+**Pricing** (per `ADD_ON_SERVICES.md`): $300/mo + $0.10-0.15/min pass-through. ROI: replaces $50/hour after-hours answering service at ~6 calls/week.
+
+**Acceptance:** an agent can answer an inbound call via Retell, identify the caller, run a workflow (e.g. take an appointment), and post the resulting issue/note back to paperclip. Outbound: an agent can place an outreach call from a campaign workflow. HIPAA clients on Retell Healthcare tier with BAA.
+
+**When to build:** when first paying client asks for voice. Don't build speculatively. Voice is highest-leverage for medical (after-hours intake), real estate (lead qualification), home services (booking).
 
 ---
 
