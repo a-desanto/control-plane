@@ -351,13 +351,13 @@ async def _stream_generate(
     messages_val = raw.get("messages") or raw.get("prompt")
     meta = {k: raw[k] for k in ("max_tokens", "system") if k in raw}
 
-    # Langfuse: use low-level stateful API so tracing spans cleanly across yields.
+    # Langfuse: use start_observation (stateful, no context manager) so tracing
+    # spans cleanly across async generator yields. trace() was removed in v3+.
     lf_gen = None
     try:
-        lf_trace = _lf.trace(name="bedrock-proxy-stream")
-        lf_gen = lf_trace.generation(
-            name="messages", model=bmodel,
-            input=messages_val, metadata=meta or None,
+        lf_gen = _lf.start_observation(
+            name="messages", as_type="generation",
+            model=bmodel, input=messages_val, metadata=meta or None,
         )
     except Exception as exc:
         log.warning("langfuse_init_failed", error=str(exc))
@@ -399,7 +399,7 @@ async def _stream_generate(
         if lf_gen:
             try:
                 lf_gen.end(
-                    usage={"input": inp, "output": out},
+                    usage_details={"input": inp, "output": out},
                     metadata={"latency_ms": latency_ms},
                 )
             except Exception as exc:
