@@ -2,11 +2,25 @@
 
 ## Status
 
-**v3.3 — high-end SMB business OS direction.** This document describes both the live system (sections 1–10, deployed and working) and the target architecture (section "Target architecture (in flight)") that closes the gap to a credible high-end SMB business OS.
+**v3.4 — MSP-managed AI services for SMBs.** This document describes both the live system (sections 1–10, deployed and working) and the target architecture (section "Target architecture (in flight)") that closes the gap to a productized MSP AI-services offering.
 
-Live deployment last verified 2026-04-28: Path B (openclaw-worker) and OpenCode native adapter both confirmed working end-to-end (Phase 3B + Phase 3C smoke tests). Target architecture phases (6–13) tracked in `ROADMAP.md`.
+Live deployment last verified 2026-04-28: Path B (openclaw-worker) and OpenCode native adapter both confirmed working end-to-end (Phase 3B + Phase 3C smoke tests). Target architecture phases (5.5–21) tracked in `ROADMAP.md`. Add-on service catalog in `ADD_ON_SERVICES.md`. End-to-end readiness in `PLATFORM_READINESS.md`.
 
-**Positioning:** per-client VPS isolation, paperclip as orchestration brain, MCP-style tool protocol, Coolify-managed fleet. Sold as a managed monthly service — the client's "operating system." Differentiates from horizontal SaaS via data isolation, compliance posture, and verticalized workflow library (vertical pick is an open strategic question).
+**Positioning (resolved 2026-05-02):** the platform is an AI services layer added to an existing MSP business. Tony is an MSP serving SMB clients across 5 verticals (legal, medical, accounting, home services, real estate). The control-plane platform automates AI ops for these clients as an upsell to the existing managed services relationship.
+
+**Commercial structure:**
+- Base tier ($499 Starter / $1,499 Pro / $4,999 Enterprise) — every paying client gets the AI ops foundation
+- Add-on services — plug-and-play modular services (Voice/Marketing/Sales/Support/etc.) priced separately and installed per-client based on what they buy
+- Vertical bundles — pre-packaged combinations for each vertical (Medical Practice Bundle, Legal Firm Bundle, etc.)
+- See `ADD_ON_SERVICES.md` for the full catalog
+
+**Architectural canonical pattern (resolved 2026-05-02):**
+- One client per VPS. Per-VPS isolation is the MSP-aligned moat — clients trust dedicated infrastructure they pay for. Pods (multi-client per VPS) is a future option deferred until client count justifies it; not the canonical pattern.
+- Multi-provider tiered. Hostinger for non-compliance (~$15-30/mo VPS), Linode Business for HIPAA / compliance (~$45-60/mo VPS, BAA available), AWS EC2 for premium / enterprise (~$80-150/mo VPS). Same git repo, same software stack, deployed to whichever VPS provider matches the client tier.
+- IaC-automated at 3-5 client scale (Terraform + Ansible — see ROADMAP Phase 5.7).
+- Single Coolify control instance orchestrates all client VPSes regardless of provider.
+
+Differentiates from competitors via: existing MSP relationships (warm pipeline), per-client managed-service value (vs self-serve SaaS), vertical workflow depth via add-on extensions (vs horizontal AI assistants), dedicated infrastructure (vs shared SaaS), HIPAA-and-other compliance posture (vs consumer-grade tools). Competitive set is other MSPs not yet offering productized AI services, not Lindy / Zapier / Beam AI direct-to-business plays.
 
 ---
 
