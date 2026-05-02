@@ -236,6 +236,7 @@ async def health() -> dict:
 
 
 @app.get("/models/{model_id:path}")
+@app.get("/v1/models/{model_id:path}")
 async def get_model(model_id: str) -> dict:
     return {
         "id": model_id, "type": "model",
@@ -244,6 +245,7 @@ async def get_model(model_id: str) -> dict:
 
 
 @app.post("/v1/messages")
+@app.post("/messages")
 async def post_messages(
     request: Request,
     x_paperclip_agent_id: str | None = Header(default=None),
