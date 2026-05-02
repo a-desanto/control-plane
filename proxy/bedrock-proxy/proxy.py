@@ -444,10 +444,11 @@ async def _stream_generate(
         )
         if lf_gen:
             try:
-                lf_gen.end(
-                    usage={"input": inp, "output": out},
+                lf_gen.update(
+                    usage_details={"input": inp, "output": out},
                     metadata={"latency_ms": latency_ms},
                 )
+                lf_gen.end()
             except Exception as exc:
                 log.warning("langfuse_end_failed", error=str(exc))
         if agent_id and company_id and (inp or out):
