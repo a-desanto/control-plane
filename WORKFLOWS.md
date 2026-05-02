@@ -1,10 +1,17 @@
-# WORKFLOWS.md — universal seven SMB workflows
+# WORKFLOWS.md — workflow specs
 
-**Companion to** `ARCHITECTURE.md` (target architecture v3.3) and `ROADMAP.md` (Phase 12).
+**Companion to** `ARCHITECTURE.md` (target architecture v3.3), `ROADMAP.md` (Phase 12), and `ADD_ON_SERVICES.md` (commercial framing).
 
-This document specifies the seven universal SMB workflows that ship with every paperclipai client deployment, regardless of vertical. Each workflow is documented with: trigger, required data sources, required integrations, agent skills, MVP scope, full scope, and the platform phase dependencies it relies on.
+This document specifies seven SMB workflows in detail. **Important framing update (2026-05-02):** these workflows are not all bundled together for every client. They split into:
 
-**Build sequence** is at the bottom — the order to ship workflows in (which is *not* the order they're listed, because the listed order is by familiarity, while the build order is by dependency).
+- **Base tier workflows** (workflows #4 Document Search, #2 Email Triage) — ship as part of every paying client deployment
+- **Add-on services** (the other five workflows) — productized add-ons priced separately, installed per-client based on what they buy
+
+See `ADD_ON_SERVICES.md` for the commercial structure (base tier pricing, add-on catalog, vertical bundles, install/uninstall mechanics).
+
+This document focuses on the technical specs of each workflow — trigger, data sources, integrations, agent skills, MVP vs full scope, platform-phase dependencies. Whether a given workflow is base-tier vs add-on is noted per workflow below.
+
+**Build sequence** is at the bottom — the order to ship workflows in.
 
 ---
 
