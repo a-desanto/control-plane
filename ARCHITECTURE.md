@@ -94,6 +94,98 @@ See `PIVOT_TO_PAPERCLIP.md` for the full history. Code recovery via git history 
 
 ---
 
+## Canonical deployment pattern — 1-per-VPS, multi-provider, IaC-automated
+
+This section documents the canonical pattern for deploying the platform per client. Resolved 2026-05-02.
+
+### One client per VPS
+
+Each paying client gets a dedicated VPS running their own paperclipai + workers + observability stack. Per-VPS isolation is the MSP-aligned architectural pattern — clients pay for managed-service-with-dedicated-infrastructure, which is what their existing MSP relationship trains them to expect. Multi-tenant SaaS undermines the managed-service value proposition; per-VPS reinforces it.
+
+This means:
+- Client A's data, agents, workflows, and configurations live entirely on their VPS
+- Client B's failure modes never affect Client A
+- Per-client compliance is a per-VPS decision (HIPAA medical client gets BAA-covered host; non-compliance retail client doesn't pay for compliance overhead)
+- Per-client capacity scaling is independent (resize one VPS without affecting others)
+- Per-client provider choice is independent
+
+### Provider tiering
+
+Each VPS is hosted on whichever provider matches the client's compliance and pricing tier:
+
+| Tier | Provider | VPS sizing | Compliance | Per-VPS cost |
+|------|----------|------------|------------|--------------|
+| General SMB (non-compliance) | Hostinger | KVM 2-4 (4-8GB RAM) | None | $15-30/mo |
+| Compliance (HIPAA, SOX, legal privilege) | Linode/Akamai Business | KVM 8GB+ | BAA available, SMB-friendly pricing | $45-60/mo |
+| Premium / Enterprise | AWS EC2 | m5.large or larger | Full AWS BAA, native Bedrock integration | $80-150/mo |
+
+The provider choice is made per-client at onboarding based on their needs. All providers run identical software stacks — same paperclipai, same workers, same observability, same git repo. The difference is purely the underlying infrastructure tier.
+
+### Single Coolify control instance
+
+A single Coolify instance (currently on the control VPS at 187.77.213.142) manages all client VPSes regardless of provider. Adding a new VPS = adding a server to Coolify with SSH credentials. Deploying code = git push triggers Coolify to deploy to all relevant VPSes in parallel.
+
+This means:
+- One source of truth for deployments (Coolify dashboard)
+- One git repo deploys everywhere
+- Multi-provider ops is one operational workflow, not three
+- Same monitoring, alerting, deployment patterns across the fleet
+
+### IaC automation at 3-5 client scale
+
+Once client count crosses 3-5, manual VPS provisioning becomes a real time sink. Phase 5.7 of `ROADMAP.md` introduces Infrastructure-as-Code automation:
+- Terraform (or OpenTofu) declares VPSes per-client based on tier variables
+- Ansible configures the OS, Coolify agent, firewall, monitoring agents
+- Onboarding script orchestrates Terraform → Ansible → Coolify API → paperclipai company creation in one command
+- State storage in S3 (~$0.10/mo)
+
+Cost: $0 in tooling licenses, ~3 weeks engineering investment. Pays back within 5-7 client onboardings.
+
+### Deployment topology at scale
+
+```
+                  ┌──────────────────────────────────┐
+                  │ Coolify Control + Langfuse       │
+                  │  187.77.213.142                  │
+                  └────────────────┬─────────────────┘
+                                   │ manages all servers below
+        ┌──────────────────────────┼──────────────────────────────┐
+        ▼                          ▼                              ▼
+┌────────────────────┐   ┌────────────────────┐         ┌────────────────────┐
+│   HOSTINGER        │   │   LINODE Business  │         │   AWS EC2          │
+│   (general SMB)    │   │   (HIPAA / compl)  │         │   (premium)        │
+├────────────────────┤   ├────────────────────┤         ├────────────────────┤
+│ Client A VPS       │   │ Caring First VPS   │         │ Enterprise client  │
+│  (retail)          │   │  (medical)         │         │  (high-value)      │
+│ ~$15/mo            │   │ ~$45/mo            │         │ ~$80-150/mo        │
+├────────────────────┤   ├────────────────────┤         └────────────────────┘
+│ Client B VPS       │   │ Medical Client #2  │
+│  (real estate)     │   │  ~$45/mo           │
+│ ~$15/mo            │   ├────────────────────┤
+├────────────────────┤   │ Law Firm VPS       │
+│ Client C VPS       │   │  ~$45/mo           │
+│  (accounting)      │   └────────────────────┘
+│ ~$15/mo            │
+└────────────────────┘
+```
+
+Same codebase. Different VPS providers. Per-client tier choice. This is the architecture-of-record going forward.
+
+### Considered and deferred: pod model (5-clients-per-VPS)
+
+The "pod" pattern (5 clients sharing one VPS with paperclipai's native multi-company support) was extensively considered 2026-05-02 and deferred — not the canonical pattern.
+
+Reasons:
+- 1-per-VPS aligns with MSP managed-service value proposition; pods undermine it
+- Per-VPS isolation is a marketing point clients value; pod isolation is invisible
+- Tenant-scoping bugs in custom code = data leakage between clients on same pod = catastrophic for HIPAA
+- Operational complexity savings of pods only matter past ~15-20 clients; 1-per-VPS + IaC handles 1-15 clients cleanly
+- Compliance is simpler per-VPS (per-client BAA chain) than per-pod (mixing rules)
+
+Pod model remains an option for the future as a low-tier offering when client count exceeds ~15-20 and ops burden justifies engineering investment. If introduced, pods serve only the lowest-cost tier (general SMB on shared infrastructure); compliance and premium clients always remain 1-per-VPS as upsell. Not on the current roadmap.
+
+---
+
 ## Data model
 
 paperclip is multi-tenant. All entities live inside its embedded PostgreSQL (port 54329 inside the container).
