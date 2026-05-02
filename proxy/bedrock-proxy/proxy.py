@@ -38,7 +38,7 @@ log = structlog.get_logger()
 # ── Config ──────────────────────────────────────────────────────────────────
 BEDROCK_API_KEY = os.environ["BEDROCK_API_KEY"]
 BEDROCK_BASE_URL = os.environ.get(
-    "BEDROCK_BASE_URL", "https://bedrock-runtime.us-east-1.amazonaws.com"
+    "BEDROCK_BASE_URL", "https://bedrock-runtime.us-east-2.amazonaws.com"
 )
 PAPERCLIP_DB_URL = os.environ.get(
     "PAPERCLIP_DB_URL",
@@ -51,25 +51,38 @@ LISTEN_PORT = int(os.environ.get("PROXY_PORT", "4002"))
 _RETRY_DELAYS = [0.5, 1.0]
 
 # ── Model translation ────────────────────────────────────────────────────────
-# Sonnet 4.6 and Haiku 4.5 IDs verified against Anthropic Bedrock legacy
-# InvokeModel table, 2026-05. Opus 4.7 absent from that table; ID is taken
-# from the runbook and has NOT been confirmed against AWS docs.
+# Model IDs verified against boto3 bedrock.list_foundation_models (us-east-2, 2026-05):
+#   anthropic.claude-sonnet-4-6          (ACTIVE, INFERENCE_PROFILE only)
+#   anthropic.claude-haiku-4-5-20251001-v1:0  (ACTIVE, INFERENCE_PROFILE only)
+#   anthropic.claude-opus-4-7            (ACTIVE, INFERENCE_PROFILE only)
+#
+# ⚠ INFERENCE_PROFILE REQUIRED: All three models set inferenceTypesSupported=
+# ["INFERENCE_PROFILE"] — direct InvokeModel with bare "anthropic.xxx" IDs fails.
+# Must use the system-managed cross-region inference profile IDs ("us.anthropic.xxx")
+# which route across US-region capacity automatically.
+#
+# TODO — Opus 4.7 thinking shape: Opus 4.7 only supports thinking.type='adaptive'.
+# If a request arrives with thinking={'type':'enabled', 'budget_tokens':N} and the
+# resolved model is opus-4-7, the proxy must either rewrite the field to
+# {'type':'adaptive'} or return HTTP 400 with a clear error message. Silently
+# forwarding 'enabled' to Bedrock will fail with a schema error. This is a
+# migration trap from Opus 4.6, which used the older 'enabled' shape.
 ANTHROPIC_TO_BEDROCK: dict[str, str] = {
-    "claude-sonnet-4-6":          "anthropic.claude-sonnet-4-6",
-    "claude-sonnet-4-6-20250515": "anthropic.claude-sonnet-4-6",
-    "claude-haiku-4-5":           "anthropic.claude-haiku-4-5-20251001-v1:0",
-    "claude-haiku-4-5-20251001":  "anthropic.claude-haiku-4-5-20251001-v1:0",
-    "claude-opus-4-7":            "anthropic.claude-opus-4-7:0",    # unverified
-    "claude-opus-4-7-20250514":   "anthropic.claude-opus-4-7:0",    # unverified
+    "claude-sonnet-4-6":          "us.anthropic.claude-sonnet-4-6",
+    "claude-sonnet-4-6-20250515": "us.anthropic.claude-sonnet-4-6",
+    "claude-haiku-4-5":           "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "claude-haiku-4-5-20251001":  "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "claude-opus-4-7":            "us.anthropic.claude-opus-4-7",
+    "claude-opus-4-7-20250514":   "us.anthropic.claude-opus-4-7",
 }
 
-# USD / 1M tokens. Claude 4.x was not yet listed on the AWS pricing page as of
-# 2026-05; values match the runbook and should be treated as approximate until
-# confirmed from https://aws.amazon.com/bedrock/pricing/
+# USD / 1M tokens. Claude 4.x is NOT in the AWS Pricing API as of 2026-05.
+# Values from runbook — UNVERIFIED until confirmed at https://aws.amazon.com/bedrock/pricing/
+# Keys use inference profile IDs to match ANTHROPIC_TO_BEDROCK values above.
 BEDROCK_PRICING: dict[str, dict[str, float]] = {
-    "anthropic.claude-sonnet-4-6":               {"input": 3.00,  "output": 15.00},
-    "anthropic.claude-haiku-4-5-20251001-v1:0":  {"input": 0.80,  "output":  4.00},
-    "anthropic.claude-opus-4-7:0":               {"input": 15.00, "output": 75.00},
+    "us.anthropic.claude-sonnet-4-6":               {"input": 3.00,  "output": 15.00},  # UNVERIFIED
+    "us.anthropic.claude-haiku-4-5-20251001-v1:0":  {"input": 0.80,  "output":  4.00},  # UNVERIFIED
+    "us.anthropic.claude-opus-4-7":                 {"input": 15.00, "output": 75.00},  # UNVERIFIED
 }
 
 # ── Database pool ────────────────────────────────────────────────────────────
