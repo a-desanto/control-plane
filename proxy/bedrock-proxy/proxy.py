@@ -9,10 +9,13 @@ Routes:
   GET  /health
   GET  /models/{model_id}   — fake stub for Anthropic SDK model lookups
   POST /v1/messages         — unary and streaming
+  POST /messages            — alias (OpenCode omits the /v1 prefix)
 """
 import asyncio
+import base64
 import json
 import os
+import struct
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -208,6 +211,42 @@ async def _post_with_retry(
     raise HTTPException(502, detail=f"Bedrock unreachable: {last_exc}")
 
 
+def _decode_eventstream(buf: bytes) -> tuple[list[bytes], bytes]:
+    """
+    Parse zero or more complete AWS EventStream frames from buf.
+
+    Bedrock invoke-with-response-stream uses a binary framing protocol:
+      [4B total-len][4B header-len][4B prelude-CRC32][headers][body][4B msg-CRC32]
+
+    Each chunk frame body is JSON: {"bytes": "<base64-Anthropic-SSE-event>", "p": "..."}
+    We decode the base64 and re-emit as SSE data lines so any Anthropic SDK
+    client (OpenCode, claude CLI, etc.) can parse it without modification.
+
+    Returns (list_of_sse_lines, unconsumed_remainder).
+    """
+    sse_lines: list[bytes] = []
+    while len(buf) >= 12:
+        total_len = struct.unpack(">I", buf[:4])[0]
+        if len(buf) < total_len or total_len < 16:
+            break
+        frame = buf[:total_len]
+        buf = buf[total_len:]
+        headers_len = struct.unpack(">I", frame[4:8])[0]
+        body_start = 12 + headers_len
+        body_end = total_len - 4
+        if body_start >= body_end:
+            continue
+        try:
+            frame_json = json.loads(frame[body_start:body_end])
+            event_b64 = frame_json.get("bytes", "")
+            if event_b64:
+                event_data = base64.b64decode(event_b64)
+                sse_lines.append(b"data: " + event_data + b"\n\n")
+        except Exception:
+            pass
+    return sse_lines, buf
+
+
 def _extract_sse_usage(chunk: bytes) -> tuple[int, int, int]:
     """Parse SSE chunk; return (input_tokens, output_tokens, cached_tokens)."""
     inp = out = cached = 0
@@ -383,14 +422,19 @@ async def _stream_generate(
                     yield err
                     return
 
-                async for chunk in resp.aiter_bytes():
-                    c_inp, c_out, c_cached = _extract_sse_usage(chunk)
-                    if c_inp:
-                        inp    = c_inp
-                        cached = c_cached
-                    if c_out:
-                        out = c_out
-                    yield chunk
+                # Bedrock streams binary AWS EventStream frames; decode to SSE.
+                stream_buf = b""
+                async for raw_chunk in resp.aiter_bytes():
+                    stream_buf += raw_chunk
+                    sse_lines, stream_buf = _decode_eventstream(stream_buf)
+                    for sse_line in sse_lines:
+                        c_inp, c_out, c_cached = _extract_sse_usage(sse_line)
+                        if c_inp:
+                            inp    = c_inp
+                            cached = c_cached
+                        if c_out:
+                            out = c_out
+                        yield sse_line
 
     finally:
         latency_ms = int((time.monotonic() - t0) * 1000)
@@ -401,7 +445,7 @@ async def _stream_generate(
         if lf_gen:
             try:
                 lf_gen.end(
-                    usage_details={"input": inp, "output": out},
+                    usage={"input": inp, "output": out},
                     metadata={"latency_ms": latency_ms},
                 )
             except Exception as exc:
