@@ -233,11 +233,56 @@ Extend `agent_wakeup_requests` with `external_event` source type. n8n webhook pa
 
 ---
 
-## Phase 12 — Workflow library (universal-first, vertical extensions)
+## Phase 12 — Base tier workflows + add-on service catalog + vertical bundles
 
-**Status:** Not started. Strategy resolved 2026-04-30: **horizontal platform with vertical extensions** — build the universal SMB workflow set first (works for every client regardless of vertical), then layer vertical-specific workflows as individual clients pull on them.
+**Status:** Not started. **Strategy resolved 2026-05-02:** base tier + plug-and-play add-on services + vertical bundles, replacing the prior "universal seven for all clients" approach.
 
-**Detailed workflow specs and build order:** see `WORKFLOWS.md`. Each of the seven workflows is documented with trigger, data sources, integrations, agent skills, MVP vs full scope, and platform-phase dependencies. The build sequence is in the same doc.
+See `ADD_ON_SERVICES.md` for the full add-on catalog, pricing, install mechanics, and ROI math per add-on.
+
+### Phase 12A — Base tier workflows (every paying client gets these)
+
+3-4 foundational workflows in the base tier:
+- Document organization & search — Phase 6 RAG layer in production form
+- Email triage / inbox management — incoming email classification + drafting
+- Operator-managed onboarding — setup, training, ongoing support
+- Activity reporting + cost transparency — daily digest, monthly summary
+
+These ship as part of base tier ($499-4,999/mo per client). Build first.
+
+### Phase 12B — Add-on service catalog (priced separately, installed per-client)
+
+Each add-on is a discrete bundle of skills + agents + integrations + workflows + Stripe pricing that installs/uninstalls cleanly. Build add-ons in priority order based on what paying clients demand:
+- Voice (Retell-powered) — see Phase 13
+- Marketing & Social Media
+- Sales Outreach
+- Customer Support
+- Document Workflows
+- Vertical Extensions (Legal, Medical, Accounting, Home Services, Real Estate)
+- Premium Reasoning (Opus tier)
+- Custom Workflow Development (one-off engagements)
+
+Install via `./scripts/install-addon.sh --client X --addon Y`. Provisions skills, agents, integrations, billing in one command.
+
+**Build order:** don't build add-ons speculatively. Build whichever add-on the next paying client demands first. Generalize after 2-3 clients want it. See `ADD_ON_SERVICES.md` "Adding a new add-on" section.
+
+### Phase 12C — Vertical bundles (pre-packaged combinations)
+
+Pre-configured combinations of add-ons priced ~10% below sum-of-parts. Easier to sell, clear pricing math, vertical-specific:
+- Medical Practice Bundle: Pro base + Voice + Document Workflows + Medical Vertical Extension = $2,499/mo
+- Legal Firm Bundle: Pro base + Document Workflows + Legal Vertical Extension + Premium Reasoning = $2,799/mo
+- Real Estate Brokerage Bundle: Pro base + Voice + Marketing + Sales Outreach + Real Estate Vertical Extension = $2,999/mo
+- Accounting Firm Bundle: Pro base + Document Workflows + Accounting Vertical Extension + Sales Outreach = $2,499/mo
+- Home Services Bundle: Pro base + Voice + Marketing + Home Services Vertical Extension = $2,499/mo
+
+### Acceptance
+
+- Base tier workflows ship as part of every client deployment, no per-workflow configuration needed
+- Operator can install any add-on for any client via one CLI command (or eventually via operator UI in Phase 9)
+- Each add-on has clear pricing, ROI math, and Stripe SKU
+- Vertical bundles displayed in operator UI with one-click install
+- Discovery-driven upselling: operator reviews per-client usage data monthly, suggests next add-on with ROI math
+
+**Open input:** which add-on to productize first depends on what existing/prospect clients demand. Defer the decision until you have 2-3 paying clients asking for the same capability.
 
 ### Universal SMB workflows (build first, ship to every client)
 
