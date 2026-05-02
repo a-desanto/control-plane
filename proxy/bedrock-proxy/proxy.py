@@ -283,6 +283,28 @@ async def get_model(model_id: str) -> dict:
     }
 
 
+def _extract_pca_attribution(auth_header: str | None) -> tuple[str | None, str | None]:
+    """
+    Extract (agent_id, company_id) from a synthetic ANTHROPIC_API_KEY value.
+
+    OpenCode adapters that route through bedrock-proxy set:
+      ANTHROPIC_API_KEY=pca:agent_id=<uuid>,company_id=<uuid>
+
+    The proxy replaces the client's Authorization header with the Bedrock key, so
+    any value works for auth; we borrow the field to carry attribution metadata.
+    """
+    if not auth_header:
+        return None, None
+    # Strip "Bearer " prefix if present
+    token = auth_header.removeprefix("Bearer ").strip()
+    if not token.startswith("pca:"):
+        return None, None
+    parts = dict(
+        p.split("=", 1) for p in token[4:].split(",") if "=" in p
+    )
+    return parts.get("agent_id"), parts.get("company_id")
+
+
 @app.post("/v1/messages")
 @app.post("/messages")
 async def post_messages(
@@ -290,6 +312,14 @@ async def post_messages(
     x_paperclip_agent_id: str | None = Header(default=None),
     x_paperclip_company_id: str | None = Header(default=None),
 ) -> Response:
+    # Fall back to attribution encoded in Authorization header (OpenCode adapters
+    # set ANTHROPIC_API_KEY=pca:agent_id=...,company_id=... for cost tracking).
+    if not x_paperclip_agent_id or not x_paperclip_company_id:
+        auth = request.headers.get("authorization") or request.headers.get("Authorization")
+        pca_agent, pca_company = _extract_pca_attribution(auth)
+        x_paperclip_agent_id = x_paperclip_agent_id or pca_agent
+        x_paperclip_company_id = x_paperclip_company_id or pca_company
+
     raw: dict = await request.json()
     anthropic_model: str = raw.get("model", "claude-sonnet-4-6")
     bmodel = _bedrock_model(anthropic_model)
