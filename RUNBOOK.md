@@ -17,7 +17,7 @@ Companion to `ARCHITECTURE.md` and `BUILD_BRIEF.md`. Covers deployment, env vars
 | `PAPERCLIP_ALLOWED_HOSTNAMES` | Yes | — | Comma-separated allowed hostnames for CORS/auth. |
 | `ANTHROPIC_API_KEY` | Yes | — | API key for Claude. **Never commit.** |
 | `PAPERCLIP_REQUIRE_AGENT_APPROVAL` | No | `false` | Set `true` to require admin approval for new agents. |
-| `ANTHROPIC_BASE_URL` | Yes | — | Set to `http://openrouter-proxy:4001` to route through the proxy. Omit only when using direct Anthropic API. |
+| `ANTHROPIC_BASE_URL` | Yes | — | Set to `http://bedrock-proxy:4002` to route through bedrock-proxy. |
 | `NODE_ENV` | No | `production` | Standard Node env flag. Leave as `production`. |
 
 paperclipai uses an **embedded PostgreSQL** instance (port 54329 inside the container). No
@@ -230,14 +230,17 @@ Claude 4.x inference profile IDs use `us.` prefix (cross-region). Nemotron uses 
 ### Nemotron shim
 
 `opencode-free-agent` uses a command shim instead of `opencode` directly:
-- **Installed:** `/usr/local/bin/nemotron-bedrock-shim` (in paperclipai container)
+- **Installed:** `/paperclip/instances/default/scripts/nemotron-bedrock-shim` (host bind mount → survives redeployments)
 - **Source:** `proxy/bedrock-proxy/nemotron-bedrock-shim` in this repo
-- **Agent config:** `adapterConfig.command=nemotron-bedrock-shim`, `model=anthropic/nemotron-nano`
+- **Agent config:** `adapterConfig.command=/paperclip/instances/default/scripts/nemotron-bedrock-shim`, `model=anthropic/nemotron-nano`
 - **Attribution:** reads `PAPERCLIP_AGENT_ID` / `PAPERCLIP_COMPANY_ID` from adapter env, sends as `X-Paperclip-Agent-Id` / `X-Paperclip-Company-Id` headers
 - **Streaming:** not implemented — shim always sends `stream=false`. Sufficient for current use.
-- **Persistence:** shim is `docker cp`'d into the live container; must be re-installed after paperclipai redeploy.
+- **Persistence:** shim lives on host at `/paperclip/instances/default/scripts/`; the `/paperclip` bind mount means it is accessible at the same path inside any new paperclipai container after redeploy. No manual re-install needed.
 
-⚠ **After any paperclipai redeploy:** run `docker cp proxy/bedrock-proxy/nemotron-bedrock-shim <paperclipai-container>:/usr/local/bin/nemotron-bedrock-shim && docker exec <container> chmod +x /usr/local/bin/nemotron-bedrock-shim`
+To update the shim: edit `proxy/bedrock-proxy/nemotron-bedrock-shim` in this repo, then `cp` to host path:
+```bash
+cp /root/control-plane/proxy/bedrock-proxy/nemotron-bedrock-shim /paperclip/instances/default/scripts/nemotron-bedrock-shim
+```
 
 ### Cost tracking
 
@@ -262,7 +265,7 @@ After 24h gate passes with no rollback: delete openrouter-proxy in Coolify (Step
 
 | Date | Event |
 |---|---|
-| 2026-05-03 | openrouter-proxy stopped (Exited/143); bedrock-proxy canonical; Phase 5.9 Nemotron migrated |
+| 2026-05-03 | openrouter-proxy stopped (Exited/143); bedrock-proxy canonical; Phase 5.9 Nemotron migrated; shim moved to bind-mount path (survives redeployments) |
 | pending 2026-05-04 | DELETE openrouter-proxy in Coolify (Step 4 gate) |
 | pending | Cancel Cloudflare R2 paid plan after first clean S3 nightly backup (Step 5 gate) |
 
