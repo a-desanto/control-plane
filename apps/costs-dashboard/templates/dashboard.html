@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CFPA Cost Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <h1>CFPA Cost Dashboard</h1>
+  <p class="subtitle">Generated {{ generated_at }} &mdash; <a href="/">refresh</a></p>
+
+  {% if db_error %}
+  <div class="error-banner">DB unavailable: {{ db_error }}</div>
+  {% endif %}
+
+  <!-- AWS Spend (static) -->
+  <section>
+    <h2>AWS Spend</h2>
+    <div class="card aws-card">
+      <div>
+        <div class="label">Last manually checked</div>
+        <div class="value">{{ aws_last_checked }}</div>
+        <div class="meta">Edit aws_last_checked in vendors.json to update</div>
+      </div>
+      <a class="aws-link" href="https://console.aws.amazon.com/cost-management/home" target="_blank" rel="noopener">
+        Open Cost Explorer &rarr;
+      </a>
+    </div>
+  </section>
+
+  <!-- Paperclipai MTD summary -->
+  <section>
+    <h2>Paperclipai MTD (this month)</h2>
+    <div class="card" style="display:flex;gap:40px;">
+      <div>
+        <div class="label">Total spend</div>
+        <div class="value">${{ "%.2f"|format((mtd.total_cents or 0) / 100) }}</div>
+      </div>
+      <div>
+        <div class="label">API calls</div>
+        <div class="value">{{ mtd.calls or 0 }}</div>
+      </div>
+      <div>
+        <div class="label">Input tokens</div>
+        <div class="value">{{ "{:,}".format(mtd.input_tokens or 0) }}</div>
+      </div>
+      <div>
+        <div class="label">Output tokens</div>
+        <div class="value">{{ "{:,}".format(mtd.output_tokens or 0) }}</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Per-client breakdown -->
+  <section>
+    <h2>Per-Client Cost (last 30 days)</h2>
+    {% if by_client %}
+    <table>
+      <thead>
+        <tr>
+          <th>Company</th>
+          <th class="num">Cost</th>
+          <th class="num">Calls</th>
+          <th class="num">Input tokens</th>
+          <th class="num">Output tokens</th>
+          <th>Last event</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in by_client %}
+        <tr>
+          <td>{{ row.company_name }}</td>
+          <td class="num">${{ "%.2f"|format((row.total_cents or 0) / 100) }}</td>
+          <td class="num">{{ row.calls }}</td>
+          <td class="num">{{ "{:,}".format(row.input_tokens or 0) }}</td>
+          <td class="num">{{ "{:,}".format(row.output_tokens or 0) }}</td>
+          <td>{{ row.last_event.strftime("%Y-%m-%d %H:%M") if row.last_event else "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">No cost events in the last 30 days.</p>
+    {% endif %}
+  </section>
+
+  <!-- Per-model breakdown -->
+  <section>
+    <h2>Per-Model Breakdown (last 30 days)</h2>
+    {% if by_model %}
+    <table>
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>Provider</th>
+          <th class="num">Cost</th>
+          <th class="num">Calls</th>
+          <th class="num">Input tokens</th>
+          <th class="num">Output tokens</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in by_model %}
+        <tr>
+          <td>{{ row.model }}</td>
+          <td>
+            <span class="tag {% if row.provider == 'bedrock' %}bedrock{% endif %}">{{ row.provider }}</span>
+          </td>
+          <td class="num">${{ "%.2f"|format((row.total_cents or 0) / 100) }}</td>
+          <td class="num">{{ row.calls }}</td>
+          <td class="num">{{ "{:,}".format(row.input_tokens or 0) }}</td>
+          <td class="num">{{ "{:,}".format(row.output_tokens or 0) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">No cost events in the last 30 days.</p>
+    {% endif %}
+  </section>
+
+  <!-- Vendor subscriptions -->
+  <section>
+    <h2>Vendor Subscriptions</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Vendor</th>
+          <th>Category</th>
+          <th class="num">$/mo</th>
+          <th>Billing</th>
+          <th>Notes</th>
+          <th>Portal</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in vendors %}
+        <tr>
+          <td>{{ v.name }}</td>
+          <td>{{ v.category }}</td>
+          <td class="num">
+            {% if v.billing_cycle == "usage" %}
+              <em style="color:#999">usage</em>
+            {% else %}
+              ${{ "%.0f"|format(v.cost_usd_monthly) }}
+            {% endif %}
+          </td>
+          <td>{{ v.billing_cycle }}</td>
+          <td style="color:#666">{{ v.notes or "" }}</td>
+          <td><a href="{{ v.portal_url }}" target="_blank" rel="noopener">portal &rarr;</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <div class="footer">
+    Costs dashboard MVP &mdash; Phase 5.4 &mdash; live data from paperclipai cost_events &middot; vendor list from vendors.json
+  </div>
+</body>
+</html>

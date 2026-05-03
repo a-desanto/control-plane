@@ -1,0 +1,53 @@
+{
+  "aws_last_checked": "2026-05-03",
+  "vendors": [
+    {
+      "name": "Hostinger VPS",
+      "category": "Infrastructure",
+      "cost_usd_monthly": 0,
+      "billing_cycle": "monthly",
+      "portal_url": "https://hpanel.hostinger.com",
+      "notes": "srv1408380 — update cost_usd_monthly"
+    },
+    {
+      "name": "Cloudflare",
+      "category": "DNS / CDN / R2",
+      "cost_usd_monthly": 0,
+      "billing_cycle": "monthly",
+      "portal_url": "https://dash.cloudflare.com",
+      "notes": "R2 paid plan — cancel after S3 migration confirmed"
+    },
+    {
+      "name": "AWS",
+      "category": "Bedrock / S3",
+      "cost_usd_monthly": 0,
+      "billing_cycle": "usage",
+      "portal_url": "https://console.aws.amazon.com/billing/home",
+      "notes": "Bedrock inference + S3 backups — see AWS card above for MTD"
+    },
+    {
+      "name": "GitHub",
+      "category": "Source control",
+      "cost_usd_monthly": 0,
+      "billing_cycle": "monthly",
+      "portal_url": "https://github.com/settings/billing",
+      "notes": ""
+    },
+    {
+      "name": "Langfuse Cloud",
+      "category": "Observability",
+      "cost_usd_monthly": 0,
+      "billing_cycle": "monthly",
+      "portal_url": "https://cloud.langfuse.com",
+      "notes": "Self-hosted — $0 unless migrated to cloud"
+    },
+    {
+      "name": "1Password",
+      "category": "Secrets",
+      "cost_usd_monthly": 0,
+      "billing_cycle": "monthly",
+      "portal_url": "https://my.1password.com/billing",
+      "notes": ""
+    }
+  ]
+}
