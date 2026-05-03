@@ -77,7 +77,17 @@ ANTHROPIC_TO_BEDROCK: dict[str, str] = {
     "claude-haiku-4-5-20251001":  "us.anthropic.claude-haiku-4-5-20251001-v1:0",
     "claude-opus-4-7":            "us.anthropic.claude-opus-4-7",
     "claude-opus-4-7-20250514":   "us.anthropic.claude-opus-4-7",
+    # Phase 5.9 — Nemotron via Bedrock Converse API (not InvokeModel)
+    "nemotron-nano":              "us.nvidia.nemotron-nano-3-30b-instruct-v1:0",
+    "nvidia/nemotron-nano-3-30b": "us.nvidia.nemotron-nano-3-30b-instruct-v1:0",
 }
+
+# Models that use Bedrock Converse API instead of InvokeModel/InvokeModelWithResponseStream.
+# Nemotron and other non-Anthropic models do not support the Anthropic-native InvokeModel
+# body format; they require the provider-agnostic Converse API.
+CONVERSE_MODELS: frozenset[str] = frozenset({
+    "us.nvidia.nemotron-nano-3-30b-instruct-v1:0",
+})
 
 # USD / 1M tokens. Claude 4.x is NOT in the AWS Pricing API as of 2026-05.
 # Values from runbook — UNVERIFIED until confirmed at https://aws.amazon.com/bedrock/pricing/
@@ -86,6 +96,7 @@ BEDROCK_PRICING: dict[str, dict[str, float]] = {
     "us.anthropic.claude-sonnet-4-6":               {"input": 3.00,  "output": 15.00},  # UNVERIFIED
     "us.anthropic.claude-haiku-4-5-20251001-v1:0":  {"input": 0.80,  "output":  4.00},  # UNVERIFIED
     "us.anthropic.claude-opus-4-7":                 {"input": 15.00, "output": 75.00},  # UNVERIFIED
+    "us.nvidia.nemotron-nano-3-30b-instruct-v1:0":  {"input": 0.20,  "output":  0.20},  # UNVERIFIED
 }
 
 # ── Database pool ────────────────────────────────────────────────────────────
@@ -182,6 +193,81 @@ def _prepare_body(raw: dict) -> bytes:
     body = {k: v for k, v in raw.items() if k not in ("model", "stream")}
     body.setdefault("anthropic_version", "bedrock-2023-05-31")
     return json.dumps(body).encode()
+
+
+def _prepare_converse_body(raw: dict) -> bytes:
+    """Translate Anthropic Messages API body → Bedrock Converse API body.
+
+    Converse uses a provider-agnostic format:
+      messages: [{role, content: [{text: "..."}]}]
+      system:   [{text: "..."}]
+      inferenceConfig: {maxTokens, temperature, topP, stopSequences}
+    """
+    def _to_converse_content(content) -> list[dict]:
+        if isinstance(content, str):
+            return [{"text": content}]
+        if isinstance(content, list):
+            out = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    out.append({"text": block.get("text", "")})
+            return out or [{"text": ""}]
+        return [{"text": str(content)}]
+
+    messages = []
+    for msg in raw.get("messages", []):
+        messages.append({
+            "role": msg["role"],
+            "content": _to_converse_content(msg.get("content", "")),
+        })
+
+    body: dict = {"messages": messages}
+
+    system_raw = raw.get("system")
+    if system_raw:
+        if isinstance(system_raw, str):
+            body["system"] = [{"text": system_raw}]
+        elif isinstance(system_raw, list):
+            body["system"] = [{"text": b.get("text", "")} for b in system_raw if isinstance(b, dict)]
+
+    inf: dict = {}
+    if "max_tokens" in raw:
+        inf["maxTokens"] = raw["max_tokens"]
+    if "temperature" in raw:
+        inf["temperature"] = raw["temperature"]
+    if "top_p" in raw:
+        inf["topP"] = raw["top_p"]
+    if "stop_sequences" in raw:
+        inf["stopSequences"] = raw["stop_sequences"]
+    if inf:
+        body["inferenceConfig"] = inf
+
+    return json.dumps(body).encode()
+
+
+def _parse_converse_response(resp_json: dict, bedrock_model: str, original_model: str) -> dict:
+    """Translate Bedrock Converse response → Anthropic Messages response shape."""
+    out_msg = resp_json.get("output", {}).get("message", {})
+    content_blocks = out_msg.get("content", [])
+    text = " ".join(b.get("text", "") for b in content_blocks if "text" in b)
+    usage = resp_json.get("usage", {})
+    stop_reason_map = {"end_turn": "end_turn", "stop_sequence": "stop_sequence", "max_tokens": "max_tokens"}
+    stop = stop_reason_map.get(resp_json.get("stopReason", "end_turn"), "end_turn")
+    return {
+        "id": f"msg_{uuid.uuid4().hex}",
+        "type": "message",
+        "role": "assistant",
+        "content": [{"type": "text", "text": text}],
+        "model": bedrock_model,
+        "stop_reason": stop,
+        "stop_sequence": None,
+        "usage": {
+            "input_tokens": usage.get("inputTokens", 0),
+            "output_tokens": usage.get("outputTokens", 0),
+            "cache_read_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+        },
+    }
 
 
 async def _post_with_retry(
@@ -315,7 +401,10 @@ async def post_messages(
     # Fall back to attribution encoded in Authorization header (OpenCode adapters
     # set ANTHROPIC_API_KEY=pca:agent_id=...,company_id=... for cost tracking).
     if not x_paperclip_agent_id or not x_paperclip_company_id:
-        auth = request.headers.get("authorization") or request.headers.get("Authorization")
+        # Anthropic SDK sends API key as x-api-key (not Authorization: Bearer)
+        auth = (request.headers.get("x-api-key")
+                or request.headers.get("authorization")
+                or request.headers.get("Authorization"))
         pca_agent, pca_company = _extract_pca_attribution(auth)
         x_paperclip_agent_id = x_paperclip_agent_id or pca_agent
         x_paperclip_company_id = x_paperclip_company_id or pca_company
@@ -324,7 +413,6 @@ async def post_messages(
     anthropic_model: str = raw.get("model", "claude-sonnet-4-6")
     bmodel = _bedrock_model(anthropic_model)
     is_stream = bool(raw.get("stream"))
-    body = _prepare_body(raw)
 
     log.info(
         "request_in",
@@ -332,6 +420,17 @@ async def post_messages(
         agent_id=x_paperclip_agent_id, company_id=x_paperclip_company_id,
     )
 
+    if bmodel in CONVERSE_MODELS:
+        # Non-Anthropic models (e.g. Nemotron) require Bedrock Converse API format.
+        # Streaming is not yet implemented for Converse — shim sends stream=false.
+        converse_body = _prepare_converse_body(raw)
+        url = f"{BEDROCK_BASE_URL}/model/{bmodel}/converse"
+        return await _unary_converse(
+            converse_body, url, bmodel, anthropic_model, raw,
+            x_paperclip_agent_id, x_paperclip_company_id,
+        )
+
+    body = _prepare_body(raw)
     if is_stream:
         url = f"{BEDROCK_BASE_URL}/model/{bmodel}/invoke-with-response-stream"
         return StreamingResponse(
@@ -405,6 +504,72 @@ async def _unary(
         return Response(
             content=resp.content,
             status_code=resp.status_code,
+            media_type="application/json",
+        )
+
+
+# ── Converse (non-Anthropic) unary handler ────────────────────────────────────
+
+async def _unary_converse(
+    body: bytes,
+    url: str,
+    bmodel: str,
+    original_model: str,
+    raw: dict,
+    agent_id: str | None,
+    company_id: str | None,
+) -> Response:
+    messages_val = raw.get("messages")
+    meta = {k: raw[k] for k in ("max_tokens", "system") if k in raw}
+
+    with _lf.start_as_current_observation(
+        name="messages", as_type="generation",
+        model=bmodel, input=messages_val, metadata=meta or None,
+    ) as gen:
+        t0 = time.monotonic()
+        async with httpx.AsyncClient(timeout=300) as client:
+            resp = await _post_with_retry(client, url, body)
+        latency_ms = int((time.monotonic() - t0) * 1000)
+
+        if resp.status_code >= 400:
+            gen.update(
+                level="ERROR",
+                status_message=f"HTTP {resp.status_code}",
+                metadata={"latency_ms": latency_ms},
+            )
+            log.error("bedrock_converse_error", status=resp.status_code, body=resp.text[:500])
+            return Response(
+                content=resp.content,
+                status_code=resp.status_code,
+                media_type="application/json",
+            )
+
+        rj = resp.json()
+        usage = rj.get("usage", {})
+        inp    = usage.get("inputTokens", 0)
+        out    = usage.get("outputTokens", 0)
+        cached = 0
+
+        translated = _parse_converse_response(rj, bmodel, original_model)
+
+        gen.update(
+            output=translated.get("content"),
+            usage_details={"input": inp, "output": out},
+            metadata={"latency_ms": latency_ms},
+        )
+        log.info(
+            "converse_response_ok",
+            latency_ms=latency_ms, input_tokens=inp, output_tokens=out,
+        )
+
+        if agent_id and company_id:
+            asyncio.create_task(
+                _write_cost_event(company_id, agent_id, bmodel, inp, out, cached)
+            )
+
+        return Response(
+            content=json.dumps(translated).encode(),
+            status_code=200,
             media_type="application/json",
         )
 

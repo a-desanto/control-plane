@@ -1,0 +1,166 @@
+#!/usr/bin/env python3
+"""
+nemotron-bedrock-shim — drop-in opencode CLI replacement for Nemotron via Bedrock.
+
+Used by the opencode_local adapter (config.command override) for opencode-free-agent.
+Speaks the same interface as `opencode` so the adapter needs no changes:
+
+  nemotron-bedrock-shim models
+      → prints "anthropic/nemotron-nano" (the model ID configured in the agent)
+
+  nemotron-bedrock-shim run --format json --model anthropic/nemotron-nano [--session UUID] [--variant V]
+      → reads prompt from stdin
+      → POSTs to $ANTHROPIC_BASE_URL/v1/messages with model=nemotron-nano
+        (bedrock-proxy translates to Bedrock Converse against Nemotron)
+      → emits OpenCode JSONL on stdout
+
+Environment variables (set by the adapter from the agent's runtime env):
+  ANTHROPIC_BASE_URL   — bedrock-proxy base URL, e.g. http://bedrock-proxy:4002
+  ANTHROPIC_API_KEY    — pca:agent_id=<uuid>,company_id=<uuid>  (cost attribution)
+"""
+
+import json
+import sys
+import uuid
+import os
+
+try:
+    import urllib.request
+    import urllib.error
+except ImportError:
+    pass
+
+
+BEDROCK_MODEL = "nemotron-nano"
+
+
+def _base_url() -> str:
+    url = os.environ.get("ANTHROPIC_BASE_URL", "http://bedrock-proxy:4002")
+    return url.rstrip("/")
+
+
+def _api_key() -> str:
+    return os.environ.get("ANTHROPIC_API_KEY", "")
+
+
+def _emit(obj: dict) -> None:
+    sys.stdout.write(json.dumps(obj) + "\n")
+    sys.stdout.flush()
+
+
+def _do_models() -> None:
+    print(f"anthropic/{BEDROCK_MODEL}")
+
+
+def _do_run(args: list[str]) -> None:
+    session_id = None
+    i = 0
+    while i < len(args):
+        if args[i] == "--session" and i + 1 < len(args):
+            session_id = args[i + 1]
+            i += 2
+        else:
+            i += 1
+
+    if not session_id:
+        session_id = str(uuid.uuid4())
+
+    prompt = sys.stdin.read()
+    if not prompt.strip():
+        _emit({"sessionID": session_id, "type": "error", "error": "empty prompt"})
+        sys.exit(1)
+
+    messages = [{"role": "user", "content": prompt}]
+    payload = json.dumps({
+        "model": BEDROCK_MODEL,
+        "messages": messages,
+        "max_tokens": 4096,
+    }).encode()
+
+    base = _base_url()
+    url = f"{base}/v1/messages"
+    api_key = _api_key()
+    headers = {
+        "Content-Type": "application/json",
+        "x-api-key": api_key,
+    }
+
+    req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            body = resp.read()
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode(errors="replace")
+        _emit({
+            "sessionID": session_id,
+            "type": "error",
+            "error": f"bedrock-proxy HTTP {e.code}: {err_body[:300]}",
+        })
+        sys.exit(1)
+    except Exception as e:
+        _emit({"sessionID": session_id, "type": "error", "error": str(e)})
+        sys.exit(1)
+
+    try:
+        resp_json = json.loads(body)
+    except Exception as e:
+        _emit({"sessionID": session_id, "type": "error", "error": f"bad JSON: {e}"})
+        sys.exit(1)
+
+    text = ""
+    for block in resp_json.get("content", []):
+        if block.get("type") == "text":
+            text += block.get("text", "")
+
+    usage = resp_json.get("usage", {})
+    inp_tokens = usage.get("input_tokens", 0)
+    out_tokens = usage.get("output_tokens", 0)
+    cached_tokens = usage.get("cache_read_input_tokens", 0)
+
+    p = BEDROCK_PRICING.get(
+        "us.nvidia.nemotron-nano-3-30b-instruct-v1:0",
+        {"input": 0.20, "output": 0.20},
+    )
+    cost_usd = (inp_tokens * p["input"] + out_tokens * p["output"]) / 1_000_000
+
+    _emit({"sessionID": session_id, "type": "text", "part": {"text": text}})
+    _emit({
+        "sessionID": session_id,
+        "type": "step_finish",
+        "part": {
+            "tokens": {
+                "input": inp_tokens,
+                "output": out_tokens,
+                "reasoning": 0,
+                "cache": {"read": cached_tokens, "write": 0},
+            },
+            "cost": cost_usd,
+        },
+    })
+
+
+BEDROCK_PRICING = {
+    "us.nvidia.nemotron-nano-3-30b-instruct-v1:0": {"input": 0.20, "output": 0.20},
+}
+
+
+def main() -> None:
+    args = sys.argv[1:]
+    if not args:
+        print("usage: nemotron-bedrock-shim <models|run> [args...]", file=sys.stderr)
+        sys.exit(1)
+
+    subcmd = args[0]
+    rest = args[1:]
+
+    if subcmd == "models":
+        _do_models()
+    elif subcmd == "run":
+        _do_run(rest)
+    else:
+        print(f"nemotron-bedrock-shim: unknown subcommand: {subcmd}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
