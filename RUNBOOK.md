@@ -159,31 +159,28 @@ Key values stored in your secrets manager. Never in git.
 
 ## §4 LLM Provider Configuration
 
-### Current provider: OpenRouter
+### Current provider: AWS Bedrock (canonical as of 2026-05-03)
 
-All Claude CLI invocations from the paperclipai container route through OpenRouter's
-Anthropic-compatible endpoint via the `openrouter-proxy` Coolify container.
-
-**Why a proxy?** The Claude Code CLI v2.1.119 sends `POST /v1/messages?beta=true` with
-`anthropic-beta` headers containing Claude-specific beta feature flags. OpenRouter's
-`/api/v1` endpoint returns 404 for the `?beta=true` suffix. The proxy strips those before
-forwarding.
+All LLM traffic routes through **bedrock-proxy** (`dwjou7it8sjqsb5g348rtwvt`, port 4002).
+OpenRouter and the openrouter-proxy are decommissioned (Step 4 delete pending 24h gate —
+see §4.1 Decommission log).
 
 ### How it works
 
 ```
-claude CLI → ANTHROPIC_BASE_URL → http://openrouter-proxy:4001 (Coolify container)
-                                           ↓
-                          POST https://openrouter.ai/api/v1/messages
-                          Authorization: Bearer <OPENROUTER_API_KEY>
-```
+claude CLI / OpenCode (anthropic/ prefix)
+    → ANTHROPIC_BASE_URL=http://bedrock-proxy:4002
+    → bedrock-proxy: translates Anthropic Messages API → Bedrock InvokeModel (Claude models)
+                                                       → Bedrock Converse (Nemotron)
+    → AWS Bedrock us-east-2
+    → writes cost_events to paperclip PostgreSQL
+    → traces to Langfuse
 
-The proxy (`proxy/openrouter-proxy/proxy.py` in this repo) runs as a Coolify container
-(`scc2ob001qhs6d16voewfy0r`) on the `coolify` Docker network with alias `openrouter-proxy`:
-- Strips `?beta=true` and Anthropic-specific headers (`anthropic-beta`, `anthropic-version`, etc.)
-- Forwards only `Content-Type` and `Authorization: Bearer <key>` to OpenRouter
-- Handles `GET /models/*` with a fake 200 response so the CLI doesn't abort on model lookup
-- `traefik.enable=false` — internal-only, no public route
+opencode-free-agent (Nemotron):
+    → nemotron-bedrock-shim (command override, installed at /usr/local/bin/nemotron-bedrock-shim)
+    → bedrock-proxy /v1/messages with model=nemotron-nano
+    → Bedrock Converse: nvidia.nemotron-nano-3-30b
+```
 
 ### Env vars
 
@@ -191,92 +188,92 @@ The proxy (`proxy/openrouter-proxy/proxy.py` in this repo) runs as a Coolify con
 
 | Variable | Value | Purpose |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | `sk-or-v1-***` | OpenRouter API key (never commit) |
-| `ANTHROPIC_BASE_URL` | `http://openrouter-proxy:4001` | Points claude CLI at the proxy |
+| `ANTHROPIC_API_KEY` | `sk-or-v1-***` | Retained (legacy OR key); bedrock-proxy ignores it and uses its own `BEDROCK_API_KEY` |
+| `ANTHROPIC_BASE_URL` | `http://bedrock-proxy:4002` | Routes all Anthropic SDK calls through bedrock-proxy |
 
-**openrouter-proxy** (`scc2ob001qhs6d16voewfy0r`):
+**bedrock-proxy** (`dwjou7it8sjqsb5g348rtwvt`):
 
 | Variable | Purpose |
 |---|---|
-| `OPENROUTER_API_KEY` | OpenRouter API key — set in Coolify, never in source |
+| `BEDROCK_API_KEY` | Bedrock API Key (Bearer token format) — set in Coolify |
+| `BEDROCK_BASE_URL` | `https://bedrock-runtime.us-east-2.amazonaws.com` |
+| `PAPERCLIP_DB_URL` | Paperclip PostgreSQL for cost_event writes |
+| `LANGFUSE_*` | Langfuse tracing credentials |
 
 ### Proxy management
 
 ```bash
 # View logs
-docker logs $(docker ps -q --filter name=scc2ob001qhs6d16voewfy0r) --tail 50
+docker logs $(docker ps -q --filter name=dwjou7it8sjqsb5g348rtwvt) --tail 50
 
 # Restart
-docker restart $(docker ps -q --filter name=scc2ob001qhs6d16voewfy0r)
+docker restart $(docker ps -q --filter name=dwjou7it8sjqsb5g348rtwvt)
+
+# Redeploy (rebuild image from git)
+curl -s -X POST -H "Authorization: Bearer $COOLIFY_TOKEN" \
+  "http://localhost:8000/api/v1/deploy?uuid=dwjou7it8sjqsb5g348rtwvt&force=true"
 ```
 
-To update proxy logic: edit `proxy/openrouter-proxy/proxy.py` and `git push origin main`.
-Coolify auto-deploys on push.
+To update proxy logic: edit `proxy/bedrock-proxy/proxy.py` and `git push origin main`.
 
-### Swapping providers
+### Supported models
 
-To revert to direct Anthropic API:
-
-1. In Coolify, on app `ihe84uqp2yr5bu9wd43w34dq`:
-   - Set `ANTHROPIC_API_KEY` to your Anthropic key (`sk-ant-...`)
-   - Delete or unset `ANTHROPIC_BASE_URL`
-2. Restart paperclipai via Coolify.
-
-To swap to a different OpenRouter key:
-
-1. In Coolify, on app `scc2ob001qhs6d16voewfy0r`: update `OPENROUTER_API_KEY`.
-2. Restart the proxy container.
-3. Update `ANTHROPIC_API_KEY` on app `ihe84uqp2yr5bu9wd43w34dq` to the new key and restart paperclipai.
-
-### Gotchas
-
-**`?beta=true` / `anthropic-beta` headers:** The Claude Code CLI sends
-`POST /v1/messages?beta=true` with `anthropic-beta` and `anthropic-version` request headers.
-OpenRouter's `/api/v1` endpoint returns 404 on the `?beta=true` suffix and may reject the
-beta headers. The proxy strips both before forwarding — this is the entire reason the proxy
-exists. **If you ever swap to direct Anthropic API, remove `ANTHROPIC_BASE_URL` from all apps
-that set it; don't just point it at Anthropic's base URL, as the proxy header-stripping is
-not needed there and would silently break beta features.**
-
-**Slug-vs-UUID for paperclip API access:** see §6 Known Operational Quirks. Short version:
-always pass the company UUID (`bd80728d-6755-4b63-a9b9-c0e24526c820`) in API paths — never
-the URL slug (`CAR`).
-
-### OpenCode model prefix routing
-
-The model prefix in OpenCode determines which API path is used, not just which provider:
-
-| Prefix | API path | OpenRouter compat |
+| Anthropic model alias | Bedrock model ID | API |
 |---|---|---|
-| `anthropic/` | OpenCode's Anthropic provider → Messages API | ✓ verified (`opencode-agent` runs `claude-sonnet-4-6`) |
-| `opencode/` | OpenCode's preset catalog → Chat Completions | ✓ verified (`opencode-free-agent` runs `nemotron-3-super-free`) |
-| `openai/` | OpenCode defers to OpenAI SDK → Responses API | ✗ broken (Codex, `gpt-4.1`, `gpt-5` all fail) |
+| `claude-sonnet-4-6` | `us.anthropic.claude-sonnet-4-6` | InvokeModel |
+| `claude-haiku-4-5` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | InvokeModel |
+| `claude-opus-4-7` | `us.anthropic.claude-opus-4-7` | InvokeModel |
+| `nemotron-nano` | `nvidia.nemotron-nano-3-30b` | **Converse** (ON_DEMAND, no cross-region profile) |
 
-For OpenAI capability via OpenCode + OpenRouter:
-- Not currently possible. OpenCode's `openai/` prefix unconditionally uses Responses API.
-- Fix would require either: OpenCode adding a chat-completions flag, OpenRouter stabilizing
-  Responses API, or OpenCode exposing GPT-class models under the `opencode/` prefix.
-- Workaround for OpenAI access: configure direct OpenAI account (separate billing, separate
-  key — requires explicit decision before implementing).
+Claude 4.x inference profile IDs use `us.` prefix (cross-region). Nemotron uses direct ON_DEMAND.
 
-Evidence for the broken `openai/` path (two attempts, 2026-04-28):
+### Nemotron shim
 
-- **Codex CLI:** The `codex` binary hardcodes `wss://api.openai.com/v1/responses`
-  (WebSocket Responses API). `OPENAI_BASE_URL` only redirects REST — WebSocket is
-  hardcoded to `api.openai.com`. Exits 1 with `401 Unauthorized`.
-- **OpenCode + `openai/gpt-4.1`:** Routes to `https://openrouter.ai/api/v1/responses`
-  (REST Responses API). OpenRouter's impl fails with Zod validation errors on the request
-  schema. Changing the model name (`gpt-4o`, `gpt-5`, etc.) does not help — the routing
-  decision is made by the prefix, not the model.
+`opencode-free-agent` uses a command shim instead of `opencode` directly:
+- **Installed:** `/usr/local/bin/nemotron-bedrock-shim` (in paperclipai container)
+- **Source:** `proxy/bedrock-proxy/nemotron-bedrock-shim` in this repo
+- **Agent config:** `adapterConfig.command=nemotron-bedrock-shim`, `model=anthropic/nemotron-nano`
+- **Attribution:** reads `PAPERCLIP_AGENT_ID` / `PAPERCLIP_COMPANY_ID` from adapter env, sends as `X-Paperclip-Agent-Id` / `X-Paperclip-Company-Id` headers
+- **Streaming:** not implemented — shim always sends `stream=false`. Sufficient for current use.
+- **Persistence:** shim is `docker cp`'d into the live container; must be re-installed after paperclipai redeploy.
+
+⚠ **After any paperclipai redeploy:** run `docker cp proxy/bedrock-proxy/nemotron-bedrock-shim <paperclipai-container>:/usr/local/bin/nemotron-bedrock-shim && docker exec <container> chmod +x /usr/local/bin/nemotron-bedrock-shim`
+
+### Cost tracking
+
+All Bedrock calls write to `cost_events` table (provider=`bedrock`). Verified 2026-05-03:
+- Claude Sonnet 4.6: `us.anthropic.claude-sonnet-4-6`
+- Nemotron Nano 3 30B: `nvidia.nemotron-nano-3-30b` (923 input / 207 output tokens, Phase 5.9 smoke test)
+
+Pricing values in `BEDROCK_PRICING` dict are UNVERIFIED — Claude 4.x not yet in AWS Pricing API as of 2026-05.
+
+### Rollback to OpenRouter
+
+openrouter-proxy (`scc2ob001qhs6d16voewfy0r`) is stopped but NOT deleted (24h soft-rollback window, started 2026-05-03T17:27 UTC). To reactivate:
+
+```bash
+docker start scc2ob001qhs6d16voewfy0r-<suffix>
+# Then in Coolify paperclipai env: ANTHROPIC_BASE_URL=http://openrouter-proxy:4001
+```
+
+After 24h gate passes with no rollback: delete openrouter-proxy in Coolify (Step 4).
+
+### §4.1 Decommission log
+
+| Date | Event |
+|---|---|
+| 2026-05-03 | openrouter-proxy stopped (Exited/143); bedrock-proxy canonical; Phase 5.9 Nemotron migrated |
+| pending 2026-05-04 | DELETE openrouter-proxy in Coolify (Step 4 gate) |
+| pending | Cancel Cloudflare R2 paid plan after first clean S3 nightly backup (Step 5 gate) |
+
+### OpenCode model prefix routing (historical)
+
+Previously `opencode/` prefix routed directly to OpenRouter Chat Completions using
+`ANTHROPIC_API_KEY=sk-or-v1-*`. This path is now bypassed for Nemotron via the shim.
+`anthropic/` prefix continues to use `ANTHROPIC_BASE_URL` → bedrock-proxy as before.
 
 **`OPENAI_BASE_URL` / `OPENAI_API_KEY` are not set on paperclipai** and must not be added
 without a verified working path. `opencode-openai-agent` was deleted 2026-04-28.
-
-### opencode-free-agent operational notes
-
-`opencode-free-agent` (`513f5d7f-aba3-43fe-9d97-25a22fb3cc2e`) uses
-`opencode/nemotron-3-super-free` — a free-tier Llama 70B model via OpenCode's preset
-catalog. Verified working 2026-04-28 (CAR-13, exitCode 0, $0.00, billed via OpenRouter).
 
 **Appropriate uses:**
 - Low-stakes housekeeping: status sweeps, issue closing, comment drafts
