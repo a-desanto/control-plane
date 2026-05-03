@@ -1,53 +1,77 @@
 {
   "aws_last_checked": "2026-05-03",
-  "vendors": [
+  "subscriptions": [
     {
-      "name": "Hostinger VPS",
+      "vendor": "Hostinger VPS",
       "category": "Infrastructure",
-      "cost_usd_monthly": 0,
-      "billing_cycle": "monthly",
-      "portal_url": "https://hpanel.hostinger.com",
-      "notes": "srv1408380 — update cost_usd_monthly"
+      "cost_usd_monthly": 20,
+      "billing": "monthly",
+      "notes": "srv1408380 control VPS. Add new rows per-client when each client VPS goes live.",
+      "portal_url": "https://hpanel.hostinger.com/billing"
     },
     {
-      "name": "Cloudflare",
-      "category": "DNS / CDN / R2",
-      "cost_usd_monthly": 0,
-      "billing_cycle": "monthly",
-      "portal_url": "https://dash.cloudflare.com",
-      "notes": "R2 paid plan — cancel after S3 migration confirmed"
+      "vendor": "Cloudflare R2 (decommissioning)",
+      "category": "Object storage",
+      "cost_usd_monthly": 5,
+      "billing": "monthly",
+      "notes": "Cancel after Stage 5 R2->S3 migration verified. Set to $0 once cancelled.",
+      "portal_url": "https://dash.cloudflare.com/"
     },
     {
-      "name": "AWS",
-      "category": "Bedrock / S3",
-      "cost_usd_monthly": 0,
-      "billing_cycle": "usage",
-      "portal_url": "https://console.aws.amazon.com/billing/home",
-      "notes": "Bedrock inference + S3 backups — see AWS card above for MTD"
+      "vendor": "AWS",
+      "category": "Bedrock / S3 / Textract",
+      "cost_usd_monthly": null,
+      "billing": "usage",
+      "notes": "Variable - see live cost_events for paperclipai LLM portion. Bedrock infra + S3 backups + IAM. Open Cost Explorer for full picture.",
+      "portal_url": "https://console.aws.amazon.com/cost-management/home"
     },
     {
-      "name": "GitHub",
+      "vendor": "GitHub",
       "category": "Source control",
       "cost_usd_monthly": 0,
-      "billing_cycle": "monthly",
-      "portal_url": "https://github.com/settings/billing",
-      "notes": ""
+      "billing": "monthly",
+      "notes": "Free tier covers current usage. Re-evaluate at first hire (Team $4/user/mo) or 2k Actions minutes/mo.",
+      "portal_url": "https://github.com/settings/billing"
     },
     {
-      "name": "Langfuse Cloud",
+      "vendor": "Langfuse",
       "category": "Observability",
       "cost_usd_monthly": 0,
-      "billing_cycle": "monthly",
-      "portal_url": "https://cloud.langfuse.com",
-      "notes": "Self-hosted — $0 unless migrated to cloud"
+      "billing": "self-hosted",
+      "notes": "Self-hosted on srv1408380 - $0 unless migrated to Langfuse Cloud (~$59/mo Pro tier).",
+      "portal_url": "https://langfuse.cfpa.sekuirtek.com/"
     },
     {
-      "name": "1Password",
+      "vendor": "1Password Business",
       "category": "Secrets",
-      "cost_usd_monthly": 0,
-      "billing_cycle": "monthly",
-      "portal_url": "https://my.1password.com/billing",
-      "notes": ""
+      "cost_usd_monthly": 5,
+      "billing": "monthly",
+      "notes": "Solo seat. Move to Team plan when first hire.",
+      "portal_url": "https://my.1password.com/billing"
+    },
+    {
+      "vendor": "Healthchecks.io",
+      "category": "Monitoring",
+      "cost_usd_monthly": 5,
+      "billing": "monthly",
+      "notes": "Hobbyist plan, covers current checks. Re-evaluate at 20+ checks.",
+      "portal_url": "https://healthchecks.io/projects/"
+    },
+    {
+      "vendor": "Anthropic Claude (Code subscription)",
+      "category": "Developer tooling",
+      "cost_usd_monthly": 100,
+      "billing": "monthly",
+      "notes": "Adjust to actual tier. Pro=$20, Max=$100-200.",
+      "portal_url": "https://claude.ai/settings/billing"
+    },
+    {
+      "vendor": "Namecheap",
+      "category": "Domain / DNS",
+      "cost_usd_monthly": 1,
+      "billing": "annual",
+      "notes": "sekuirtek.com domain registration ~$12/yr. Wildcard *.cfpa.sekuirtek.com on Namecheap DNS.",
+      "portal_url": "https://ap.www.namecheap.com/"
     }
   ]
 }

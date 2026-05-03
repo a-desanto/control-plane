@@ -104,7 +104,7 @@ async def dashboard(request: Request):
         {
             "request": request,
             "aws_last_checked": vendors_data.get("aws_last_checked", "—"),
-            "vendors": vendors_data.get("vendors", []),
+            "vendors": vendors_data.get("subscriptions", []),
             "by_client": by_client,
             "by_model": by_model,
             "mtd": mtd,

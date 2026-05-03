@@ -137,16 +137,16 @@
       <tbody>
         {% for v in vendors %}
         <tr>
-          <td>{{ v.name }}</td>
+          <td>{{ v.vendor }}</td>
           <td>{{ v.category }}</td>
           <td class="num">
-            {% if v.billing_cycle == "usage" %}
+            {% if v.cost_usd_monthly is none %}
               <em style="color:#999">usage</em>
             {% else %}
               ${{ "%.0f"|format(v.cost_usd_monthly) }}
             {% endif %}
           </td>
-          <td>{{ v.billing_cycle }}</td>
+          <td>{{ v.billing }}</td>
           <td style="color:#666">{{ v.notes or "" }}</td>
           <td><a href="{{ v.portal_url }}" target="_blank" rel="noopener">portal &rarr;</a></td>
         </tr>
