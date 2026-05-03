@@ -80,10 +80,19 @@ def _do_run(args: list[str]) -> None:
     base = _base_url()
     url = f"{base}/v1/messages"
     api_key = _api_key()
+    # buildPaperclipEnv sets PAPERCLIP_AGENT_ID / PAPERCLIP_COMPANY_ID in our env;
+    # pass them as explicit headers so bedrock-proxy writes cost_events correctly.
+    agent_id = os.environ.get("PAPERCLIP_AGENT_ID", "")
+    company_id = os.environ.get("PAPERCLIP_COMPANY_ID", "")
+
     headers = {
         "Content-Type": "application/json",
         "x-api-key": api_key,
     }
+    if agent_id:
+        headers["X-Paperclip-Agent-Id"] = agent_id
+    if company_id:
+        headers["X-Paperclip-Company-Id"] = company_id
 
     req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
     try:
@@ -118,7 +127,7 @@ def _do_run(args: list[str]) -> None:
     cached_tokens = usage.get("cache_read_input_tokens", 0)
 
     p = BEDROCK_PRICING.get(
-        "us.nvidia.nemotron-nano-3-30b-instruct-v1:0",
+        "nvidia.nemotron-nano-3-30b",
         {"input": 0.20, "output": 0.20},
     )
     cost_usd = (inp_tokens * p["input"] + out_tokens * p["output"]) / 1_000_000
@@ -140,7 +149,7 @@ def _do_run(args: list[str]) -> None:
 
 
 BEDROCK_PRICING = {
-    "us.nvidia.nemotron-nano-3-30b-instruct-v1:0": {"input": 0.20, "output": 0.20},
+    "nvidia.nemotron-nano-3-30b": {"input": 0.20, "output": 0.20},
 }
 
 

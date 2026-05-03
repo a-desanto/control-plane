@@ -78,15 +78,16 @@ ANTHROPIC_TO_BEDROCK: dict[str, str] = {
     "claude-opus-4-7":            "us.anthropic.claude-opus-4-7",
     "claude-opus-4-7-20250514":   "us.anthropic.claude-opus-4-7",
     # Phase 5.9 — Nemotron via Bedrock Converse API (not InvokeModel)
-    "nemotron-nano":              "us.nvidia.nemotron-nano-3-30b-instruct-v1:0",
-    "nvidia/nemotron-nano-3-30b": "us.nvidia.nemotron-nano-3-30b-instruct-v1:0",
+    # inferenceTypesSupported=["ON_DEMAND"] — no cross-region inference profile needed
+    "nemotron-nano":              "nvidia.nemotron-nano-3-30b",
+    "nvidia/nemotron-nano-3-30b": "nvidia.nemotron-nano-3-30b",
 }
 
 # Models that use Bedrock Converse API instead of InvokeModel/InvokeModelWithResponseStream.
 # Nemotron and other non-Anthropic models do not support the Anthropic-native InvokeModel
 # body format; they require the provider-agnostic Converse API.
 CONVERSE_MODELS: frozenset[str] = frozenset({
-    "us.nvidia.nemotron-nano-3-30b-instruct-v1:0",
+    "nvidia.nemotron-nano-3-30b",
 })
 
 # USD / 1M tokens. Claude 4.x is NOT in the AWS Pricing API as of 2026-05.
@@ -96,7 +97,7 @@ BEDROCK_PRICING: dict[str, dict[str, float]] = {
     "us.anthropic.claude-sonnet-4-6":               {"input": 3.00,  "output": 15.00},  # UNVERIFIED
     "us.anthropic.claude-haiku-4-5-20251001-v1:0":  {"input": 0.80,  "output":  4.00},  # UNVERIFIED
     "us.anthropic.claude-opus-4-7":                 {"input": 15.00, "output": 75.00},  # UNVERIFIED
-    "us.nvidia.nemotron-nano-3-30b-instruct-v1:0":  {"input": 0.20,  "output":  0.20},  # UNVERIFIED
+    "nvidia.nemotron-nano-3-30b":                   {"input": 0.20,  "output":  0.20},  # UNVERIFIED
 }
 
 # ── Database pool ────────────────────────────────────────────────────────────
