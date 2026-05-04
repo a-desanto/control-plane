@@ -1,5 +1,5 @@
 #!/bin/sh
-# Nightly pg_dump for all VPS Postgres instances → Cloudflare R2 (cfpa-backups)
+# Nightly pg_dump for all VPS Postgres instances → AWS S3 (cfpa-backups)
 # Retention: 7 daily, 4 weekly (Sunday), 3 monthly (1st of month)
 
 DATE=$(date -u +%Y-%m-%d)
@@ -42,25 +42,25 @@ dump_pg odoo-qa3   postgresql-qa3ernlh747z79f6o5wpmoem   5432  f6LwgPPVs0VQc4Xu 
 dump_pg gwsw       postgresql-gwsw0wcc0co44088swwgkooc   5432  KRLjOZeKr92H8trV  "$GWSW_PG_PASSWORD"       n8n_db
 
 # ── Upload ─────────────────────────────────────────────────────────────────────
-log "Uploading to r2:${R2_BUCKET}/daily/${DATE}/"
-rclone copy "$TMPDIR/" "r2:${R2_BUCKET}/daily/${DATE}/"
+log "Uploading to s3:${S3_BUCKET}/daily/${DATE}/"
+rclone copy "$TMPDIR/" "s3:${S3_BUCKET}/daily/${DATE}/"
 
 if [ "$DOW" = "7" ]; then
   log "Uploading weekly snapshot (Sunday)"
-  rclone copy "$TMPDIR/" "r2:${R2_BUCKET}/weekly/${DATE}/"
+  rclone copy "$TMPDIR/" "s3:${S3_BUCKET}/weekly/${DATE}/"
 fi
 
 if [ "$DOM" = "01" ]; then
   log "Uploading monthly snapshot (1st of month)"
-  rclone copy "$TMPDIR/" "r2:${R2_BUCKET}/monthly/${DATE}/"
+  rclone copy "$TMPDIR/" "s3:${S3_BUCKET}/monthly/${DATE}/"
 fi
 
 # ── Retention ─────────────────────────────────────────────────────────────────
 # --min-age deletes objects older than N days; keep 7 daily, 4 weekly, 3 monthly
 log "Pruning old backups"
-rclone delete "r2:${R2_BUCKET}/daily/"   --min-age 8d
-rclone delete "r2:${R2_BUCKET}/weekly/"  --min-age 29d
-rclone delete "r2:${R2_BUCKET}/monthly/" --min-age 91d
+rclone delete "s3:${S3_BUCKET}/daily/"   --min-age 8d
+rclone delete "s3:${S3_BUCKET}/weekly/"  --min-age 29d
+rclone delete "s3:${S3_BUCKET}/monthly/" --min-age 91d
 
 # ── Cleanup ────────────────────────────────────────────────────────────────────
 rm -rf "$TMPDIR"
