@@ -42,12 +42,12 @@
       "portal_url": "https://langfuse.cfpa.sekuirtek.com/"
     },
     {
-      "vendor": "1Password Business",
+      "vendor": "Bitwarden",
       "category": "Secrets",
-      "cost_usd_monthly": 5,
-      "billing": "monthly",
-      "notes": "Solo seat. Move to Team plan when first hire.",
-      "portal_url": "https://my.1password.com/billing"
+      "cost_usd_monthly": 1,
+      "billing": "annual",
+      "notes": "Bitwarden Premium ($10/yr ~ $0.83/mo). Migrated from 1Password 2026-05-04. Stores all platform credentials, IAM keys, vendor portals.",
+      "portal_url": "https://vault.bitwarden.com/"
     },
     {
       "vendor": "Healthchecks.io",
