@@ -92,6 +92,7 @@ async def embed_texts(texts: list[str], input_type: str = "search_document") -> 
                     "input_type": input_type,
                     "truncate": "END",
                     "embedding_types": ["float"],
+                    "output_dimension": 1024,
                 },
             )
             if resp.status_code != 200:
