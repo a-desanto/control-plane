@@ -194,8 +194,7 @@ async def ingest(event: dict) -> str | None:
                 as_type="generation",
                 model=EMBED_MODEL_ID,
                 input={"chunk_count": len(chunks)},
-                trace_name="ck_ingest",
-                trace_metadata={"doc_id": str(doc_id), "company_id": company_id},
+                metadata={"doc_id": str(doc_id), "company_id": company_id},
             )
     except Exception as exc:
         log.warning("langfuse_init_failed", error=str(exc))
