@@ -29,8 +29,17 @@ _EMBED_PRICE_PER_1M_USD = 0.10
 # ── Config ────────────────────────────────────────────────────────────────────
 CKDB_URL = os.environ["CKDB_URL"]
 PAPERCLIP_DB_URL = os.environ["PAPERCLIP_DB_URL"]
-REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/2")
 AWS_BEARER_TOKEN = os.environ["AWS_BEARER_TOKEN_BEDROCK"]
+
+# REDIS_URL may contain special chars in the password (e.g. / = +).
+# Set REDIS_PASSWORD separately and we'll build the URL, or pass a pre-encoded REDIS_URL.
+_redis_password = os.environ.get("REDIS_PASSWORD", "")
+_redis_base = os.environ.get("REDIS_URL", "redis://redis:6379/2")
+if _redis_password and "://:@" not in _redis_base and "@" not in _redis_base:
+    import urllib.parse as _urlparse
+    _enc_pw = _urlparse.quote(_redis_password, safe="")
+    _redis_base = _redis_base.replace("redis://", f"redis://:{_enc_pw}@", 1)
+REDIS_URL = _redis_base
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-2")
 EMBED_MODEL_ID = os.environ.get("EMBED_MODEL_ID", "cohere.embed-v4:0")
 LANGFUSE_HOST = os.environ.get("LANGFUSE_HOST", "")
@@ -249,8 +258,8 @@ async def ingest(event: dict) -> str | None:
 # ── Redis worker loop ─────────────────────────────────────────────────────────
 async def _worker_loop() -> None:
     log.info("worker_started", queue=QUEUE_KEY)
-    raw: str | None = None
     while True:
+        raw: str | None = None
         try:
             job = await _redis.blpop(QUEUE_KEY, timeout=5)
             if not job:
@@ -268,6 +277,7 @@ async def _worker_loop() -> None:
                     await _redis.rpush(DLQ_KEY, raw)
                 except Exception:
                     pass
+            await asyncio.sleep(5)
 
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
