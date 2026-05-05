@@ -32,8 +32,10 @@ Port 4004. Internal only (no Traefik label).
 | `CKDB_URL` | Yes | `postgresql://client_knowledge:<pass>@<host>:5432/client_knowledge` |
 | `PAPERCLIP_DB_URL` | Yes | `postgresql://paperclip:paperclip@paperclip:54329/paperclip` |
 | `AWS_BEARER_TOKEN_BEDROCK` | Yes | Long-term Bedrock API key (same as bedrock-proxy) |
-| `REDIS_URL` | No | Default `redis://redis:6379/2` (omit password — set REDIS_PASSWORD separately) |
-| `REDIS_PASSWORD` | No | Set separately; will be URL-encoded and injected automatically |
+| `REDIS_HOST` | No | Default `redis` |
+| `REDIS_PORT` | No | Default `6379` |
+| `REDIS_DB` | No | Default `2` |
+| `REDIS_PASSWORD` | No | Passed as kwarg — no URL-encoding required |
 | `AWS_REGION` | No | Default `us-east-2` |
 | `EMBED_MODEL_ID` | No | Default `cohere.embed-v4:0` |
 | `LANGFUSE_HOST` | No | Optional observability |

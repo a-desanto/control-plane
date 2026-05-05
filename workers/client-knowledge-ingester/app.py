@@ -30,16 +30,10 @@ _EMBED_PRICE_PER_1M_USD = 0.10
 CKDB_URL = os.environ["CKDB_URL"]
 PAPERCLIP_DB_URL = os.environ["PAPERCLIP_DB_URL"]
 AWS_BEARER_TOKEN = os.environ["AWS_BEARER_TOKEN_BEDROCK"]
-
-# REDIS_URL may contain special chars in the password (e.g. / = +).
-# Set REDIS_PASSWORD separately and we'll build the URL, or pass a pre-encoded REDIS_URL.
-_redis_password = os.environ.get("REDIS_PASSWORD", "")
-_redis_base = os.environ.get("REDIS_URL", "redis://redis:6379/2")
-if _redis_password and "://:@" not in _redis_base and "@" not in _redis_base:
-    import urllib.parse as _urlparse
-    _enc_pw = _urlparse.quote(_redis_password, safe="")
-    _redis_base = _redis_base.replace("redis://", f"redis://:{_enc_pw}@", 1)
-REDIS_URL = _redis_base
+REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
+REDIS_PORT = int(os.environ.get("REDIS_PORT", "6379"))
+REDIS_DB = int(os.environ.get("REDIS_DB", "2"))
+REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD") or None  # None → no auth
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-2")
 EMBED_MODEL_ID = os.environ.get("EMBED_MODEL_ID", "cohere.embed-v4:0")
 LANGFUSE_HOST = os.environ.get("LANGFUSE_HOST", "")
@@ -295,7 +289,13 @@ async def lifespan(app: FastAPI):
 
     _ckdb = await asyncpg.create_pool(CKDB_URL, min_size=2, max_size=10)
     _ppdb = await asyncpg.create_pool(PAPERCLIP_DB_URL, min_size=1, max_size=5)
-    _redis = aioredis.from_url(REDIS_URL, decode_responses=True)
+    _redis = aioredis.Redis(
+        host=REDIS_HOST,
+        port=REDIS_PORT,
+        db=REDIS_DB,
+        password=REDIS_PASSWORD,
+        decode_responses=True,
+    )
 
     worker_task = asyncio.create_task(_worker_loop())
     log.info("startup_complete", embed_model=EMBED_MODEL_ID, queue=QUEUE_KEY)
