@@ -151,119 +151,45 @@ SQL
 
 ---
 
-## Stage 2 — Build client-knowledge-ingester worker — ~1-1.5 days
+## Stage 2 — client-knowledge-ingester worker — ✅ COMPLETE (2026-05-05)
 
-New directory in `control-plane/workers/client-knowledge-ingester/`. Pattern: copy the structure of `workers/openclaw-worker/` since it's already proven.
+`workers/client-knowledge-ingester/` — Python 3.12, FastAPI + asyncpg + httpx + tiktoken + redis.asyncio + structlog. Port 4004. Internal only (no Traefik).
 
-**Responsibilities:**
+**What it does:**
+- Blocks on Redis `ck:ingest:queue` (DB index 2) via `blpop`.
+- Dedup by sha256 against `client_documents` (skips re-ingestion of identical content).
+- tiktoken `cl100k_base` chunker: 512-token chunks, 64-token overlap.
+- Embeds via Cohere Embed v4 on Bedrock (`us.cohere.embed-v4:0`, cross-region inference profile required for on-demand).  **Must pass `output_dimension: 1024`** in the invoke body — v4 defaults to 1536 which mismatches the `VECTOR(1024)` schema.
+- Writes `client_documents` + `client_document_chunks` + `client_document_acls` in a single transaction.
+- Dead-letters failures to `ck:ingest:dlq` with 5-second backoff.
+- Exposes `POST /upload` for synchronous single-document ingestion.
+- Traces embed calls to Langfuse via v4 `get_client()` + `start_observation()` (non-fatal if Langfuse down).
 
-- Listen on a queue (use Redis pub/sub or paperclip's routines table — start with Redis for simplicity).
-- For each upload event: fetch source content, dedup by sha256, chunk, embed, INSERT into `client_documents` + `client_document_chunks`.
-- Idempotent: re-running the same upload event produces the same chunks.
-
-Stack: Node.js 20+, Drizzle ORM, `@langchain/textsplitters` (or roll own chunker), Voyage SDK or OpenAI SDK.
-
-**Skeleton (Node.js):**
-
-```js
-// workers/client-knowledge-ingester/src/index.js
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import { Voyage } from 'voyageai';  // or '@anthropic-ai/voyage' or use fetch directly
-import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
-import Redis from 'ioredis';
-import crypto from 'crypto';
-
-const sql = postgres(process.env.CKDB_URL);
-const db = drizzle(sql);
-const voyage = new Voyage({ apiKey: process.env.VOYAGE_API_KEY });
-const redis = new Redis(process.env.REDIS_URL);
-
-const splitter = new RecursiveCharacterTextSplitter({
-  chunkSize: 2048,        // ~512 tokens
-  chunkOverlap: 256,      // ~64 tokens
-});
-
-async function ingest(event) {
-  const { companyId, sourceType, sourceUri, title, content, mimeType, agentIds } = event;
-  const sha256 = crypto.createHash('sha256').update(content).digest('hex');
-
-  // Dedup
-  const existing = await sql`SELECT id FROM client_documents WHERE company_id = ${companyId} AND sha256 = ${sha256} AND deleted_at IS NULL`;
-  if (existing.length) return existing[0].id;
-
-  const [doc] = await sql`
-    INSERT INTO client_documents (company_id, source_type, source_uri, title, mime_type, byte_size, sha256)
-    VALUES (${companyId}, ${sourceType}, ${sourceUri}, ${title}, ${mimeType}, ${content.length}, ${sha256})
-    RETURNING id
-  `;
-
-  const chunks = await splitter.splitText(content);
-  const embeddings = await voyage.embed({
-    input: chunks,
-    model: 'voyage-3-large',
-    inputType: 'document',
-  });
-
-  await sql`
-    INSERT INTO client_document_chunks (document_id, company_id, chunk_index, content, token_count, embedding)
-    SELECT ${doc.id}, ${companyId}, idx, c, ${null}, e::vector
-    FROM unnest(${chunks}::text[], ${embeddings.data.map(e => `[${e.embedding.join(',')}]`)}::text[]) WITH ORDINALITY AS t(c, idx, e)
-  `;
-
-  // ACLs: grant read to specified agents (default: all agents in company if agentIds is null)
-  if (agentIds?.length) {
-    await sql`
-      INSERT INTO client_document_acls (document_id, agent_id, permission)
-      SELECT ${doc.id}, unnest(${agentIds}::uuid[]), 'read'
-    `;
-  }
-
-  return doc.id;
-}
-
-async function main() {
-  console.log('client-knowledge-ingester starting');
-  while (true) {
-    const job = await redis.blpop('ck:ingest:queue', 5);
-    if (!job) continue;
-    try {
-      const event = JSON.parse(job[1]);
-      const docId = await ingest(event);
-      console.log(`ingested ${docId} from ${event.sourceType}:${event.sourceUri}`);
-    } catch (e) {
-      console.error('ingest failed', e);
-      // dead-letter pattern: push to ck:ingest:dlq
-      await redis.rpush('ck:ingest:dlq', job[1]);
-    }
-  }
-}
-
-main();
+**Key env vars (all set in Coolify):**
+```
+CKDB_URL=postgresql://client_knowledge:<pass>@openclaw-pgvector-db:5432/client_knowledge
+PAPERCLIP_DB_URL=postgresql://paperclip:paperclip@paperclip:54329/paperclip
+AWS_BEARER_TOKEN_BEDROCK=<bedrock bearer token>
+AWS_REGION=us-east-2
+EMBED_MODEL_ID=us.cohere.embed-v4:0
+REDIS_HOST=coolify-redis  REDIS_PORT=6379  REDIS_DB=2  REDIS_PASSWORD=<pass>
+LANGFUSE_HOST=http://langfuse-langfuse-web-1:3000  (+ SECRET_KEY, PUBLIC_KEY)
 ```
 
-**Coolify deployment:**
-- App name: `client-knowledge-ingester`
-- Source: `a-desanto/control-plane`, branch `main`, base `/workers/client-knowledge-ingester`
-- Network: `coolify`
-- Public: false (`traefik.enable=false`)
-- Env vars:
-  ```
-  CKDB_URL=postgres://client_knowledge:<password>@client-knowledge-db:5432/client_knowledge
-  REDIS_URL=redis://redis:6379/2  # use existing Coolify-managed Redis, separate DB index
-  VOYAGE_API_KEY=<key>
-  ```
+**Coolify app:** UUID `ql7c9lqoavkj26bcvh23auec`, network alias `client-knowledge-ingester`.
 
-**Test endpoint:** the ingester listens on Redis. To test, push a test event:
+**Known limitation:** Bedrock's Cohere Embed v4 response does not include `input_token_count`, so `tokens=0` everywhere (Langfuse usage, cost_events). Embeddings are correct; cost attribution for embedding calls is blind until AWS surfaces the field. Track from first AWS bill.
 
+**Smoke test (2026-05-05, passing):**
 ```bash
-docker exec $(docker ps -q --filter name=coolify-redis) \
-  redis-cli RPUSH ck:ingest:queue '{"companyId":"bd80728d-6755-4b63-a9b9-c0e24526c820","sourceType":"manual_upload","title":"Test doc","content":"This is a test document about contracts with Acme Corp signed in 2023.","mimeType":"text/plain"}'
+docker exec $(docker ps -q --filter name=coolify-redis) redis-cli \
+  -a "$REDIS_PASSWORD" --no-auth-warning -n 2 RPUSH ck:ingest:queue \
+  '{"companyId":"bd80728d-6755-4b63-a9b9-c0e24526c820","sourceType":"manual_upload",
+    "sourceUri":"smoke-test-001","title":"Acme Corp legal services contract",
+    "content":"This Master Services Agreement...","mimeType":"text/plain","agentIds":[]}'
 ```
-
-Watch logs: `docker logs -f $(docker ps -q --filter name=client-knowledge-ingester)` — should see "ingested \<uuid\>".
-
-Verify in DB: `SELECT id, title, sha256 FROM client_documents` should show one row.
+Expected log sequence: `chunking` → `embedding_done` → `ingested` → `worker_done`.
+Result: doc `7a40afd1-fcf0-43a0-a044-fecb65d8a47a`, 1 chunk, 91 tokens, 1024-dim embedding stored. Idempotency confirmed (second push → `dedup_hit`, 0 new rows).
 
 ---
 
