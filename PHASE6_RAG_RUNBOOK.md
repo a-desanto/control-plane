@@ -178,7 +178,7 @@ LANGFUSE_HOST=http://langfuse-langfuse-web-1:3000  (+ SECRET_KEY, PUBLIC_KEY)
 
 **Coolify app:** UUID `ql7c9lqoavkj26bcvh23auec`, network alias `client-knowledge-ingester`.
 
-**Known limitation:** Bedrock's Cohere Embed v4 response does not include `input_token_count`, so `tokens=0` everywhere (Langfuse usage, cost_events). Embeddings are correct; cost attribution for embedding calls is blind until AWS surfaces the field. Track from first AWS bill.
+**Token counting:** tiktoken `cl100k_base` counts are used for cost attribution (not Bedrock's response field, which omits `input_token_count` for Cohere). ~5% variance from Cohere's actual billing tokenizer — reconcile against first AWS bill. `cost_cents` rounds to 0 at typical single-doc volumes; bulk ingestion will register.
 
 **Smoke test (2026-05-05, passing):**
 ```bash
