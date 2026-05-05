@@ -193,16 +193,57 @@ Result: doc `7a40afd1-fcf0-43a0-a044-fecb65d8a47a`, 1 chunk, 91 tokens, 1024-dim
 
 ---
 
-## Stage 3 — Build client-knowledge-mcp server — ~1-1.5 days
+## Stage 3 — client-knowledge-mcp retrieval server — ✅ COMPLETE (2026-05-05)
 
-New directory in `control-plane/mcp-servers/llm/client-knowledge-mcp/` (re-use the now-empty `mcp-servers/llm/` slot — it's been waiting for a real tenant).
+`mcp-servers/llm/client-knowledge-mcp/` — Node.js 20, Express, `@modelcontextprotocol/sdk@1.10.2`. Port 4005. Internal only (no Traefik).
 
-**Responsibilities:**
+**What shipped:**
+- Exposes MCP tool `search_client_knowledge(query, scope, k=5)` via Streamable HTTP.
+- Embeds query via Cohere Embed v4 on Bedrock (`us.cohere.embed-v4:0`). Must use `input_type: 'search_query'` (not `'search_document'`) — Cohere asymmetric embedding degrades ~10-15% with wrong type.
+- Auth: `fetch` + `Authorization: Bearer {AWS_BEARER_TOKEN_BEDROCK}` — NOT `@aws-sdk` (SigV4/IAM incompatible with this deployment's Bearer token auth).
+- `output_dimension: 1024` in Bedrock request body (matches ingester + `VECTOR(1024)` schema).
+- Stateless `StreamableHTTPServerTransport` — new transport + server per POST, no session state.
+- Two pgvector search paths: with/without `agentId` ACL JOIN.
 
-- Expose MCP tool `search_client_knowledge(query, scope, k=5)` over HTTP transport.
-- Embed the query using same model + dimensions as ingestion.
-- Run pgvector cosine similarity, optionally filter by `company_id` + `agent_id` ACL.
-- Return top-k chunks with: content, score, document_id, document_title, source_type, source_uri.
+**opencode integration:**
+
+opencode.json at `/paperclip/.config/opencode/opencode.json` (bind-mounted, survives redeployment):
+```json
+{
+  "mcp": {
+    "client-knowledge": {
+      "type": "remote",
+      "enabled": true,
+      "url": "http://client-knowledge-mcp:4005/mcp"
+    }
+  }
+}
+```
+
+**Note on opencode type key:** opencode.json uses `"type": "remote"` (not `"streamable-http"`) for HTTP MCP servers. Verified via `service=mcp key=client-knowledge transport=StreamableHTTP connected` in opencode log.
+
+**company_skills row:** `paperclipai/paperclip/client-knowledge` inserted into Caring First company (`bd80728d-6755-4b63-a9b9-c0e24526c820`). Skill markdown instructs agents to use `search_client_knowledge` for contract/document lookups with citation guidance.
+
+**Coolify app:** network alias `client-knowledge-mcp`, port 4005.
+
+**Smoke test (2026-05-05, both paths passing):**
+
+Path A — direct MCP call:
+```bash
+docker run --rm --network coolify curlimages/curl -s -X POST \
+  http://client-knowledge-mcp:4005/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_client_knowledge","arguments":{"query":"What are the payment terms in the Acme contract?","scope":{"companyId":"bd80728d-6755-4b63-a9b9-c0e24526c820"},"k":3}}}'
+```
+Result: `document_id: 7a40afd1-fcf0-43a0-a044-fecb65d8a47a`, title "Acme Corp legal services contract", content "Section 7 specifies Net 30 payment terms", score **0.522**.
+
+Negative query ("remote work policy"): Acme contract returned with score **0.179** (3× lower) — embedding discrimination confirmed, retrieval not broken.
+
+Path B — opencode agent end-to-end:
+Agent called `client-knowledge_search_client_knowledge` with `{"query": "Acme Corp payment terms"}`, retrieved doc `7a40afd1-...` with score 0.511, responded: *"The payment terms with Acme Corp are **Net 30**, as specified in **Section 7** of the Master Services Agreement dated 2023-08-15."*
+
+**Regression anchor:** use doc `7a40afd1-fcf0-43a0-a044-fecb65d8a47a` (Acme legal services contract, smoke-test-001) for future retrieval quality checks. Expected score for "payment terms" query ≥ 0.45.
 
 Stack: Node.js + `@modelcontextprotocol/sdk`. HTTP transport (paperclip configures MCP servers via URL, not stdio for hosted ones).
 
