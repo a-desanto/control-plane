@@ -200,7 +200,12 @@ async def ingest(event: dict) -> str | None:
     except Exception as exc:
         log.warning("langfuse_init_failed", error=str(exc))
 
-    embeddings, total_tokens = await embed_texts(chunks, input_type="search_document")
+    # Count tokens before embedding — tiktoken is deterministic and avoids
+    # relying on Bedrock's Cohere response which omits input_token_count.
+    chunk_tokens = [len(_enc.encode(c)) for c in chunks]
+    total_tokens = sum(chunk_tokens)
+
+    embeddings, _ = await embed_texts(chunks, input_type="search_document")
 
     if lf_gen:
         try:
@@ -213,8 +218,7 @@ async def ingest(event: dict) -> str | None:
 
     async with _ckdb.acquire() as conn:
         async with conn.transaction():
-            for idx, (chunk, emb) in enumerate(zip(chunks, embeddings)):
-                token_count = len(_enc.encode(chunk))
+            for idx, (chunk, emb, token_count) in enumerate(zip(chunks, embeddings, chunk_tokens)):
                 emb_literal = "[" + ",".join(f"{v:.8f}" for v in emb) + "]"
                 await conn.execute(
                     """
@@ -239,10 +243,11 @@ async def ingest(event: dict) -> str | None:
                     aid,
                 )
 
-    if cost_agent_id:
+    billing_agent_id = cost_agent_id or (agent_ids[0] if agent_ids else None)
+    if billing_agent_id:
         try:
-            await write_cost_event(company_id, cost_agent_id, total_tokens)
-            log.info("cost_event_written", tokens=total_tokens, agent_id=cost_agent_id)
+            await write_cost_event(company_id, billing_agent_id, total_tokens)
+            log.info("cost_event_written", tokens=total_tokens, agent_id=billing_agent_id)
         except Exception as e:
             log.warning("cost_event_failed", error=str(e))
     else:
