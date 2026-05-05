@@ -36,9 +36,7 @@ REDIS_DB = int(os.environ.get("REDIS_DB", "2"))
 REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD") or None  # None → no auth
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-2")
 EMBED_MODEL_ID = os.environ.get("EMBED_MODEL_ID", "cohere.embed-v4:0")
-LANGFUSE_HOST = os.environ.get("LANGFUSE_HOST", "")
-LANGFUSE_SECRET_KEY = os.environ.get("LANGFUSE_SECRET_KEY", "")
-LANGFUSE_PUBLIC_KEY = os.environ.get("LANGFUSE_PUBLIC_KEY", "")
+# LANGFUSE_HOST / LANGFUSE_SECRET_KEY / LANGFUSE_PUBLIC_KEY read automatically by get_client()
 
 QUEUE_KEY = "ck:ingest:queue"
 DLQ_KEY = "ck:ingest:dlq"
@@ -130,15 +128,12 @@ async def write_cost_event(company_id: str, agent_id: str, input_tokens: int) ->
     )
 
 
-# ── Langfuse helper ───────────────────────────────────────────────────────────
-def _langfuse():
-    if not LANGFUSE_HOST or not LANGFUSE_SECRET_KEY:
-        return None
-    try:
-        from langfuse import Langfuse
-        return Langfuse(host=LANGFUSE_HOST, secret_key=LANGFUSE_SECRET_KEY, public_key=LANGFUSE_PUBLIC_KEY)
-    except Exception:
-        return None
+# ── Langfuse (v4 get_client singleton, reads LANGFUSE_* env vars automatically) ─
+try:
+    from langfuse import get_client as _lf_get_client
+    _lf = _lf_get_client()
+except Exception:
+    _lf = None
 
 
 # ── Core ingest ───────────────────────────────────────────────────────────────
@@ -191,20 +186,28 @@ async def ingest(event: dict) -> str | None:
 
     log.info("chunking", doc_id=str(doc_id), chunk_count=len(chunks), title=title)
 
-    lf = _langfuse()
-    trace = lf.trace(name="ck_ingest", metadata={"doc_id": str(doc_id), "company_id": company_id}) if lf else None
-    generation = (
-        trace.generation(name="bedrock_embed_cohere", model=EMBED_MODEL_ID, input={"chunks": len(chunks)})
-        if trace
-        else None
-    )
+    lf_gen = None
+    try:
+        if _lf:
+            lf_gen = _lf.start_observation(
+                name="bedrock_embed_cohere",
+                as_type="generation",
+                model=EMBED_MODEL_ID,
+                input={"chunk_count": len(chunks)},
+                trace_name="ck_ingest",
+                trace_metadata={"doc_id": str(doc_id), "company_id": company_id},
+            )
+    except Exception as exc:
+        log.warning("langfuse_init_failed", error=str(exc))
 
     embeddings, total_tokens = await embed_texts(chunks, input_type="search_document")
 
-    if generation:
-        generation.end(usage={"input": total_tokens, "output": 0})
-    if trace:
-        trace.update(output={"chunks": len(chunks), "tokens": total_tokens})
+    if lf_gen:
+        try:
+            lf_gen.update(usage_details={"input": total_tokens, "output": 0})
+            lf_gen.end()
+        except Exception as exc:
+            log.warning("langfuse_end_failed", error=str(exc))
 
     log.info("embedding_done", doc_id=str(doc_id), chunks=len(chunks), tokens=total_tokens)
 
