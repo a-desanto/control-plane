@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}CFPA Operator{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav class="op-nav">
+    <span class="op-nav-brand">CFPA Operator</span>
+    <a href="/" class="op-nav-link">Costs</a>
+    <a href="/clients" class="op-nav-link{% if active_nav == 'clients' %} op-nav-active{% endif %}">Clients</a>
+    <a href="/audit" class="op-nav-link{% if active_nav == 'audit' %} op-nav-active{% endif %}">Audit Log</a>
+  </nav>
+
+  <div class="op-container">
+    {% if db_error %}
+    <div class="error-banner">DB unavailable: {{ db_error }}</div>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+  </div>
+
+  <div class="footer" style="padding-left:24px;">
+    CFPA Operator Dashboard — Phase 9.0 &mdash; {{ generated_at }}
+  </div>
+</body>
+</html>

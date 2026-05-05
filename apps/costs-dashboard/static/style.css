@@ -69,3 +69,95 @@ a:hover { text-decoration: underline; }
 
 .empty { color: #999; font-style: italic; padding: 12px; text-align: center; }
 .footer { margin-top: 40px; font-size: 11px; color: #aaa; }
+
+/* ── Operator dashboard ── */
+
+.op-nav {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: #1a1a1a;
+  color: #fff;
+  padding: 10px 24px;
+  margin: -24px -24px 28px -24px;
+  font-size: 13px;
+}
+.op-nav-brand { font-weight: 700; color: #fff; margin-right: 8px; }
+.op-nav-link { color: #aaa; text-decoration: none; }
+.op-nav-link:hover { color: #fff; text-decoration: none; }
+.op-nav-active { color: #fff; border-bottom: 2px solid #4f9cf9; padding-bottom: 2px; }
+
+.op-container { padding: 0 0 40px 0; }
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.page-header h1 { font-size: 20px; font-weight: 700; }
+.page-header-meta { font-size: 12px; color: #888; }
+.back-link { font-size: 12px; color: #888; text-decoration: none; }
+.back-link:hover { color: #333; text-decoration: none; }
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.badge-active   { background: #d1fae5; color: #065f46; }
+.badge-paused   { background: #fef3c7; color: #92400e; }
+.badge-inactive { background: #f3f4f6; color: #6b7280; }
+
+.addon-pill {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-right: 4px;
+}
+.addon-on  { background: #dbeafe; color: #1e40af; }
+.addon-off { background: #f3f4f6; color: #9ca3af; }
+
+.tag-system { background: #f3f4f6; color: #6b7280; }
+.tag-agent  { background: #ede9fe; color: #5b21b6; }
+.tag-on     { background: #d1fae5; color: #065f46; }
+.tag-off    { background: #fee2e2; color: #991b1b; }
+
+.stat-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.stat-card {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 14px 20px;
+  min-width: 120px;
+}
+.stat-card .label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.06em; }
+.stat-card .value { font-size: 22px; font-weight: 700; margin-top: 4px; }
+
+.toggle-btn {
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  cursor: pointer;
+  font-family: inherit;
+  letter-spacing: 0.04em;
+}
+.toggle-btn-on  { background: #dbeafe; color: #1e40af; }
+.toggle-btn-on:hover  { background: #bfdbfe; }
+.toggle-btn-off { background: #fee2e2; color: #991b1b; }
+.toggle-btn-off:hover { background: #fecaca; }

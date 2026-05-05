@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}{{ company.name }} — CFPA Operator{% endblock %}
+
+{% block content %}
+
+<!-- Header -->
+<div class="page-header">
+  <div>
+    <a href="/clients" class="back-link">&larr; Clients</a>
+    <h1 style="margin-top:6px;">{{ company.name }}</h1>
+  </div>
+  <span class="badge badge-{{ company.status }}" style="font-size:13px;padding:4px 10px;">{{ company.status }}</span>
+</div>
+
+<!-- Stats row -->
+<section>
+  <div class="stat-row">
+    <div class="stat-card">
+      <div class="label">MTD Spend</div>
+      <div class="value">${{ "%.2f"|format(mtd_cents / 100) }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Monthly Budget</div>
+      <div class="value">
+        {% if company.budget_monthly_cents %}
+          ${{ "%.0f"|format(company.budget_monthly_cents / 100) }}
+        {% else %}
+          <span style="color:#bbb">unset</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Active Members</div>
+      <div class="value">{{ members }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Agents</div>
+      <div class="value">{{ agents }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Open Issues</div>
+      <div class="value">{{ issues }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">API Calls (30d)</div>
+      <div class="value">{{ "{:,}".format(calls_30d) }}</div>
+    </div>
+  </div>
+</section>
+
+<!-- Add-ons -->
+<section>
+  <h2>Add-ons</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Add-on</th>
+        <th>State</th>
+        <th>Installed</th>
+        <th>Last Updated</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for addon in addons %}
+      <tr>
+        <td style="font-weight:600;">{{ addon.addon_key | replace('_', ' ') | title }}</td>
+        <td>
+          <span class="addon-pill {% if addon.enabled %}addon-on{% else %}addon-off{% endif %}">
+            {% if addon.enabled %}Enabled{% else %}Disabled{% endif %}
+          </span>
+        </td>
+        <td style="color:#888;">{{ addon.installed_at.strftime("%Y-%m-%d %H:%M") if addon.installed_at else "—" }}</td>
+        <td style="color:#888;">{{ addon.updated_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>
+          {% if addon.enabled %}
+          <form method="post" action="/client/{{ company.company_id }}/addon/{{ addon.addon_key }}/disable" style="display:inline;">
+            <button type="submit" class="toggle-btn toggle-btn-off">Disable</button>
+          </form>
+          {% else %}
+          <form method="post" action="/client/{{ company.company_id }}/addon/{{ addon.addon_key }}/enable" style="display:inline;">
+            <button type="submit" class="toggle-btn toggle-btn-on">Enable</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="empty">No add-ons configured for this client.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<!-- Recent Activity -->
+<section>
+  <h2>Recent Activity (last 20 events)</h2>
+  {% if activity %}
+  <table>
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Actor</th>
+        <th>Action</th>
+        <th>Entity</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in activity %}
+      <tr>
+        <td style="color:#888;white-space:nowrap;">{{ row.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>
+          <span class="tag {% if row.actor_type == 'system' %}tag-system{% elif row.actor_type == 'agent' %}tag-agent{% endif %}">
+            {{ row.actor_type }}
+          </span>
+        </td>
+        <td style="font-family:ui-monospace,monospace;font-size:12px;">{{ row.action }}</td>
+        <td style="color:#666;font-size:12px;">{{ row.entity_type }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No activity recorded yet.</p>
+  {% endif %}
+</section>
+
+<!-- Operator Audit Log for this client -->
+<section>
+  <h2>Operator Actions (this client)</h2>
+  {% if audit_rows %}
+  <table>
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Operator</th>
+        <th>Action</th>
+        <th>Add-on</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in audit_rows %}
+      <tr>
+        <td style="color:#888;white-space:nowrap;">{{ row.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>{{ row.operator_email }}</td>
+        <td>
+          <span class="tag {% if 'enabled' in row.action %}tag-on{% elif 'disabled' in row.action %}tag-off{% endif %}">
+            {{ row.action }}
+          </span>
+        </td>
+        <td style="color:#666;">{{ row.addon_key or "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No operator actions recorded for this client.</p>
+  {% endif %}
+</section>
+
+<!-- Company metadata -->
+<section>
+  <h2>Details</h2>
+  <div class="card" style="display:grid;grid-template-columns:1fr 1fr;gap:16px 40px;max-width:600px;">
+    <div>
+      <div class="label">Company ID</div>
+      <div style="font-family:ui-monospace,monospace;font-size:11px;color:#555;margin-top:2px;">{{ company.company_id }}</div>
+    </div>
+    <div>
+      <div class="label">Issue Prefix</div>
+      <div style="margin-top:2px;">{{ company.issue_prefix }}</div>
+    </div>
+    <div>
+      <div class="label">Created</div>
+      <div style="margin-top:2px;">{{ company.created_at.strftime("%Y-%m-%d") }}</div>
+    </div>
+    <div>
+      <div class="label">Paused At</div>
+      <div style="margin-top:2px;">{{ company.paused_at.strftime("%Y-%m-%d") if company.paused_at else "—" }}</div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
