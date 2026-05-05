@@ -1,7 +1,7 @@
 # Phase 9.0 — Operator Dashboard MVP Runbook
 
 **Drafted:** 2026-05-05  
-**Status:** Stage 1 DONE. Stage 2 in progress.  
+**Status:** ALL STAGES DONE 2026-05-05. 10/10 acceptance checks passed.  
 **Route base:** `costs.cfpa.sekuirtek.com/clients` (additive — does not touch `/` or `/costs`)  
 **App:** `control-plane/apps/costs-dashboard` (existing FastAPI + Jinja2, port 4003)  
 **DB:** `postgresql://paperclip:paperclip@paperclip:54329/paperclip`
@@ -29,7 +29,7 @@ faster because the install toggle is in the dashboard, not in a psql session.
 | 3 | `/client/{uuid}` detail view, read-only | ~4-6 hr | DONE 2026-05-05 |
 | 4 | Add-on toggle UI + Document Workflows install/uninstall | ~6-8 hr | DONE 2026-05-05 |
 | 5 | Audit log table + display | ~1 hr | DONE 2026-05-05 |
-| 6 | Deploy verification (10-point checklist) | | TODO |
+| 6 | Deploy verification (10-point checklist) | | DONE 2026-05-05 — 10/10 |
 
 **v1 = Stages 1-3** (read-only client management)  
 **v1.5 = Stages 4-5** (write capability)
