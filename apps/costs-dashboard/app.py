@@ -286,6 +286,7 @@ async def dashboard(request: Request):
             "mtd": mtd,
             "db_error": db_error,
             "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+            "active_nav": "costs",
         },
     )
 
