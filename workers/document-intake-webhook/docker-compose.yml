@@ -1,0 +1,42 @@
+services:
+  document-intake-webhook:
+    build:
+      context: .
+    image: document-intake-webhook:latest
+    container_name: document-intake-webhook
+    restart: unless-stopped
+    networks:
+      - coolify
+    environment:
+      - PORT=4010
+      - CKDB_URL=${CKDB_URL}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - SNS_SKIP_SIGNATURE_VERIFY=${SNS_SKIP_SIGNATURE_VERIFY:-false}
+      # AWS credentials for S3 fetch (email .eml) + put (attachment extraction)
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:-us-east-2}
+    labels:
+      - traefik.enable=true
+      # HTTPS router — higher priority than paperclipai's PathPrefix(/) catch-all
+      # because Path() + Host() is more specific than PathPrefix(/) + Host()
+      - "traefik.http.routers.doc-intake-https.rule=Host(`paperclipai.cfpa.sekuirtek.com`) && Path(`/api/webhooks/document-intake`)"
+      - traefik.http.routers.doc-intake-https.entryPoints=https
+      - traefik.http.routers.doc-intake-https.tls=true
+      - traefik.http.routers.doc-intake-https.tls.certresolver=letsencrypt
+      - traefik.http.routers.doc-intake-https.priority=200
+      - traefik.http.routers.doc-intake-https.middlewares=gzip
+      - traefik.http.routers.doc-intake-https.service=doc-intake-svc
+      # HTTP router — redirects to HTTPS just like paperclipai does
+      - "traefik.http.routers.doc-intake-http.rule=Host(`paperclipai.cfpa.sekuirtek.com`) && Path(`/api/webhooks/document-intake`)"
+      - traefik.http.routers.doc-intake-http.entryPoints=http
+      - traefik.http.routers.doc-intake-http.middlewares=redirect-to-https
+      - traefik.http.routers.doc-intake-http.priority=200
+      - traefik.http.routers.doc-intake-http.service=doc-intake-svc
+      # Upstream
+      - traefik.http.services.doc-intake-svc.loadbalancer.server.port=4010
+
+networks:
+  coolify:
+    external: true
+    name: coolify

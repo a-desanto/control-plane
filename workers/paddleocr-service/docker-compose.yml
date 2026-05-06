@@ -1,0 +1,26 @@
+services:
+  paddleocr-service:
+    build:
+      context: .
+    image: paddleocr-service:latest
+    container_name: paddleocr-service
+    restart: always
+    networks:
+      - coolify
+    environment:
+      - PADDLE_HOME=/app/models
+    volumes:
+      - paddleocr-models:/app/models
+    # Internal only — no Traefik labels. Other services reach it via
+    # http://paddleocr-service:4006 on the coolify network.
+    expose:
+      - "4006"
+
+volumes:
+  paddleocr-models:
+    driver: local
+
+networks:
+  coolify:
+    external: true
+    name: coolify

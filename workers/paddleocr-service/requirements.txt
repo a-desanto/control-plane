@@ -1,0 +1,13 @@
+setuptools>=70.0.0
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.18
+structlog==24.4.0
+# PaddlePaddle CPU-only + PaddleOCR with PP-Structure
+paddlepaddle==2.6.2
+paddleocr==2.9.1
+# PDF → image conversion (requires poppler-utils system package)
+pdf2image==1.17.0
+pillow==10.4.0
+numpy==1.26.4
+opencv-python-headless==4.10.0.84
