@@ -1,0 +1,69 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Clients (active)",
+      "type": "stat",
+      "datasource": {"type": "postgres", "uid": "paperclip"},
+      "targets": [{
+        "rawSql": "SELECT count(*) FROM client_configs WHERE onboarding_status = 'active'",
+        "format": "table"
+      }],
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "title": "MTD Spend (all clients)",
+      "type": "stat",
+      "datasource": {"type": "postgres", "uid": "paperclip"},
+      "targets": [{
+        "rawSql": "SELECT SUM(cost_cents)::float / 100 AS dollars FROM cost_events WHERE occurred_at >= date_trunc('month', NOW())",
+        "format": "table"
+      }],
+      "fieldConfig": {"defaults": {"unit": "currencyUSD"}},
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0}
+    },
+    {
+      "id": 3,
+      "title": "Documents processed (24h)",
+      "type": "stat",
+      "datasource": {"type": "postgres", "uid": "paperclip"},
+      "targets": [{
+        "rawSql": "SELECT count(*) FROM document_intake WHERE status = 'done' AND processed_at >= NOW() - INTERVAL '24 hours'",
+        "format": "table"
+      }],
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0}
+    },
+    {
+      "id": 4,
+      "title": "Per-client status",
+      "type": "table",
+      "datasource": {"type": "postgres", "uid": "paperclip"},
+      "targets": [{
+        "rawSql": "SELECT c.name AS client, cc.tier, cc.onboarding_status, COALESCE(mtd.cents,0)::float/100 AS mtd_usd, COALESCE(ag.n,0) AS agents, latest.created_at AS last_health FROM client_configs cc LEFT JOIN companies c ON c.id = cc.company_id LEFT JOIN (SELECT company_id, SUM(cost_cents) AS cents FROM cost_events WHERE occurred_at >= date_trunc('month', NOW()) GROUP BY company_id) mtd ON mtd.company_id = cc.company_id LEFT JOIN (SELECT company_id, COUNT(*) AS n FROM agents GROUP BY company_id) ag ON ag.company_id = cc.company_id LEFT JOIN LATERAL (SELECT created_at FROM client_health_snapshots WHERE client_uuid = cc.company_id ORDER BY created_at DESC LIMIT 1) latest ON true ORDER BY mtd.cents DESC NULLS LAST",
+        "format": "table"
+      }],
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 4}
+    },
+    {
+      "id": 5,
+      "title": "Cost spend over time (per client, 30d)",
+      "type": "timeseries",
+      "datasource": {"type": "postgres", "uid": "paperclip"},
+      "targets": [{
+        "rawSql": "SELECT date_trunc('hour', occurred_at) AS time, COALESCE(c.name, ce.company_id::text) AS metric, SUM(cost_cents)::float/100 AS value FROM cost_events ce LEFT JOIN companies c ON c.id = ce.company_id WHERE occurred_at >= NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1",
+        "format": "time_series"
+      }],
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 14}
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["cfpa", "fleet"],
+  "time": {"from": "now-30d", "to": "now"},
+  "title": "Fleet Overview",
+  "uid": "fleet-overview",
+  "version": 1
+}

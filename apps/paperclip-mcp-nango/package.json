@@ -1,0 +1,23 @@
+{
+  "name": "paperclip-mcp-nango",
+  "version": "0.1.0",
+  "description": "MCP server wrapping Nango self-hosted for paperclip agents",
+  "type": "module",
+  "bin": {
+    "paperclip-mcp-nango": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

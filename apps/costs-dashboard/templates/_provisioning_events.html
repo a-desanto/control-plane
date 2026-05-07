@@ -1,0 +1,91 @@
+{# HTMX fragment — rendered into #events on /client/<cid>/provisioning #}
+
+{% set status_emoji = {
+  "started": "▶️",
+  "in_progress": "⏳",
+  "completed": "✅",
+  "failed": "❌",
+  "awaiting_operator": "🛑",
+} %}
+
+{% if config and config.onboarding_status == "awaiting_dns" %}
+<div class="card" style="border:2px solid #c80;background:#fff8eb;padding:12px 16px;margin-bottom:16px;">
+  <h3 style="margin-top:0;color:#c80;">🛑 Awaiting DNS records</h3>
+  <p style="font-size:13px;">Add these 4 records in Namecheap → <code>sekuirtek.com</code> → Advanced DNS, then click the button below.</p>
+
+  <table style="font-size:12px;width:100%;">
+    <thead><tr><th>Type</th><th>Host</th><th>Value</th></tr></thead>
+    <tbody>
+      {% if config.dns_mx_record %}
+      <tr>
+        <td>MX</td>
+        <td><code>{{ config.dns_mx_record.host }}</code></td>
+        <td><code>{{ config.dns_mx_record.value }}</code></td>
+      </tr>
+      {% endif %}
+      {% if config.dns_dkim_cnames %}
+        {% for r in config.dns_dkim_cnames %}
+        <tr>
+          <td>CNAME</td>
+          <td><code>{{ r.name }}</code></td>
+          <td><code>{{ r.value }}</code></td>
+        </tr>
+        {% endfor %}
+      {% endif %}
+    </tbody>
+  </table>
+
+  <form method="post" action="/client/{{ company_id }}/provisioning/verify-dns" style="margin-top:12px;">
+    <button type="submit" style="background:#0a0;color:#fff;padding:8px 18px;border:0;border-radius:4px;cursor:pointer;">
+      I've added the records — verify
+    </button>
+  </form>
+</div>
+{% endif %}
+
+{% if config and config.onboarding_status == "active" %}
+<div class="card" style="border:2px solid #0a0;background:#f0fff0;padding:12px 16px;margin-bottom:16px;">
+  <h3 style="margin-top:0;color:#0a0;">✅ Onboarding complete</h3>
+  <p style="font-size:13px;">All steps done.
+    <a href="/client/{{ company_id }}">Open client detail &rarr;</a></p>
+</div>
+{% endif %}
+
+{% if config and config.onboarding_status == "failed" %}
+<div class="card" style="border:2px solid #c00;background:#fff0f0;padding:12px 16px;margin-bottom:16px;">
+  <h3 style="margin-top:0;color:#c00;">❌ Onboarding failed</h3>
+  <p style="font-size:13px;">See the failed step below for details. To retry, the orchestrator's <code>start_from</code> parameter can re-run from any step (not yet wired to a button).</p>
+</div>
+{% endif %}
+
+<table style="font-size:12px;width:100%;">
+  <thead>
+    <tr>
+      <th style="width:90px;">Time (UTC)</th>
+      <th style="width:30px;"></th>
+      <th>Step</th>
+      <th>Status</th>
+      <th>Message / payload</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in events %}
+    <tr style="background:{% if e.status == 'failed' %}#fff0f0{% elif e.status == 'awaiting_operator' %}#fff8eb{% elif e.status == 'completed' %}#f8fff8{% endif %};">
+      <td style="color:#888;font-family:ui-monospace,monospace;font-size:11px;">{{ e.created_at.strftime("%H:%M:%S") }}</td>
+      <td>{{ status_emoji.get(e.status, "?") }}</td>
+      <td><code>{{ e.step_name }}</code></td>
+      <td>{{ e.status }}</td>
+      <td style="font-size:11px;color:#555;">
+        {% if e.message %}{{ e.message }}{% endif %}
+        {% if e.payload and e.payload != "{}" and e.payload != {} %}
+          <details><summary style="cursor:pointer;color:#888;">payload</summary>
+            <pre style="background:#f5f5f5;padding:6px;font-size:10px;margin:4px 0 0 0;">{{ e.payload | tojson(indent=2) }}</pre>
+          </details>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="empty">No events yet — orchestrator may still be starting up.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>

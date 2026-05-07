@@ -7,3 +7,5 @@ dist/
 .ruff_cache/
 .pytest_cache/
 *.egg
+.env
+!.env.example

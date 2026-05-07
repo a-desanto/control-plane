@@ -4,11 +4,50 @@
 
 {% block content %}
 
+{# ── Phase 9.1 Stage 1: sticky health summary bar ───────────────────────── #}
+{% set h = health_snap %}
+{% set has_health = h is not none %}
+<div class="health-bar"
+     style="position:sticky;top:0;z-index:10;background:#fafafa;border-bottom:1px solid #e3e3e3;
+            padding:8px 12px;display:flex;flex-wrap:wrap;gap:18px;align-items:center;
+            font-size:13px;margin:-12px -12px 16px -12px;">
+  <strong style="margin-right:8px;">Health:</strong>
+  <span title="MTD spend">💰 ${{ "%.2f"|format(mtd_cents / 100) }}</span>
+  <span title="Active agents">🤖 {{ agents }} agents{% if config and config.agents_count %} ({{ config.agents_count }} cached){% endif %}</span>
+  <span title="DNS records resolving">
+    {% if has_health and h.dns_ok %}✅{% elif has_health %}⚠️{% else %}❓{% endif %} DNS
+  </span>
+  <span title="SES domain verified">
+    {% if has_health and h.ses_verified %}✅{% elif has_health %}⏳{% else %}❓{% endif %} SES
+    {% if config and config.ses_identity_status %}({{ config.ses_identity_status }}){% endif %}
+  </span>
+  <span title="Container stack">
+    {% if has_health and h.containers_ok %}✅{% elif has_health %}⚠️{% else %}❓{% endif %} Containers
+  </span>
+  <span title="Last successful backup">
+    {% if has_health and h.backup_ok %}✅{% elif has_health %}⚠️{% else %}❓{% endif %} Backup
+  </span>
+  {% if has_health %}
+  <span style="color:#888;margin-left:auto;">snapshot: {{ h.created_at.strftime("%Y-%m-%d %H:%M UTC") }}</span>
+  {% else %}
+  <span style="color:#bbb;margin-left:auto;">No health snapshots yet — Stage 3 will populate.</span>
+  {% endif %}
+</div>
+
 <!-- Header -->
 <div class="page-header">
   <div>
     <a href="/clients" class="back-link">&larr; Clients</a>
-    <h1 style="margin-top:6px;">{{ company.name }}</h1>
+    <h1 style="margin-top:6px;">{{ company.name }}
+      {% if config and config.slug %}<span style="color:#888;font-weight:400;font-size:18px;">/ {{ config.slug }}</span>{% endif %}
+    </h1>
+    {% if config %}
+    <div style="margin-top:4px;font-size:12px;color:#666;">
+      <span class="badge">tier: {{ config.tier }}</span>
+      <span class="badge">onboarding: {{ config.onboarding_status }}</span>
+      {% if config.onboarding_completed_at %}<span style="color:#888;">completed {{ config.onboarding_completed_at.strftime("%Y-%m-%d") }}</span>{% endif %}
+    </div>
+    {% endif %}
   </div>
   <span class="badge badge-{{ company.status }}" style="font-size:13px;padding:4px 10px;">{{ company.status }}</span>
 </div>
@@ -49,7 +88,189 @@
   </div>
 </section>
 
-<!-- Add-ons -->
+{# ── Phase 9.1 Stage 1: Infrastructure & VPS ────────────────────────────── #}
+<section>
+  <h2>Infrastructure &amp; VPS</h2>
+  <div class="card" style="display:grid;grid-template-columns:200px 1fr;gap:8px 16px;max-width:720px;font-size:13px;">
+    <div class="label">Control VPS</div><div>srv1408380 <span style="color:#888;">(Hostinger)</span></div>
+    <div class="label">Per-client VPS</div><div><span style="color:#bbb">— shares srv1408380 for now (single-tenant phase)</span></div>
+    <div class="label">Coolify project</div><div><span style="color:#888;">{{ config.config_id if config else "—" }}</span></div>
+    <div class="label">Canonical container stack</div>
+    <div style="font-size:12px;color:#666;">paperclipai · bedrock-proxy · langfuse · pgvector · paddleocr-service · document-processor · document-intake-webhook · cfpa-watchdog · cfpa-backup-runner</div>
+  </div>
+</section>
+
+{# ── Phase 9.1 Stage 1: DNS & Domain ─────────────────────────────────────── #}
+<section>
+  <h2>DNS &amp; Domain</h2>
+  {% if config %}
+    <div class="card" style="font-size:13px;max-width:900px;">
+      <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;margin-bottom:12px;">
+        <div class="label">Subdomain</div><div><code>{{ config.slug }}.sekuirtek.com</code></div>
+        <div class="label">Intake email</div><div><code>{{ config.intake_email_address or "—" }}</code></div>
+      </div>
+      <h3 style="font-size:14px;margin:8px 0 6px 0;">Expected DNS records</h3>
+      <table style="font-size:12px;">
+        <thead>
+          <tr><th>Type</th><th>Host</th><th>Value</th><th>Verified?</th></tr>
+        </thead>
+        <tbody>
+          {% if config.dns_mx_record %}
+          <tr>
+            <td>MX</td>
+            <td><code>{{ config.dns_mx_record.host }}</code></td>
+            <td><code>{{ config.dns_mx_record.value }}</code></td>
+            <td>{% if config.dns_mx_record.verified %}<span style="color:#0a0;">✓</span>{% else %}<span style="color:#c40;">✗</span>{% endif %}</td>
+          </tr>
+          {% endif %}
+          {% if config.dns_dkim_cnames %}
+            {% for r in config.dns_dkim_cnames %}
+            <tr>
+              <td>CNAME</td>
+              <td><code>{{ r.name }}</code></td>
+              <td><code>{{ r.value }}</code></td>
+              <td>{% if r.verified %}<span style="color:#0a0;">✓</span>{% else %}<span style="color:#c40;">✗</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          {% else %}
+          <tr><td colspan="4" class="empty">No DKIM CNAMEs recorded — Stage 3 will surface live state.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+      <p style="font-size:11px;color:#888;margin-top:8px;">
+        <em>Live DNS lookup not yet wired (Stage 3). Values shown are last-cached from onboarding.</em>
+      </p>
+    </div>
+  {% else %}
+    <p class="empty">No client_config row.</p>
+  {% endif %}
+</section>
+
+{# ── Phase 9.1 Stage 1: Email Intake (SES) ───────────────────────────────── #}
+<section>
+  <h2>Email Intake (SES)</h2>
+  {% if config %}
+  <div class="card" style="display:grid;grid-template-columns:200px 1fr;gap:8px 16px;max-width:900px;font-size:13px;">
+    <div class="label">SES domain identity</div><div><code>{{ config.slug }}.sekuirtek.com</code></div>
+    <div class="label">Verification status</div>
+    <div>
+      {% if config.ses_identity_status == 'verified' %}<span style="color:#0a0;">✓ verified</span>
+      {% elif config.ses_identity_status == 'pending' %}<span style="color:#c80;">⏳ pending</span>
+      {% elif config.ses_identity_status == 'failed' %}<span style="color:#c00;">✗ failed</span>
+      {% else %}<span style="color:#bbb;">unknown — live polling not wired (Stage 3)</span>{% endif %}
+    </div>
+    <div class="label">Receipt rule</div><div><code>{{ config.ses_receipt_rule_name or "—" }}</code></div>
+    <div class="label">S3 intake bucket</div><div><code>{{ config.s3_intake_bucket or "—" }}</code></div>
+    <div class="label">SNS topic</div><div style="font-family:ui-monospace,monospace;font-size:11px;word-break:break-all;">{{ config.sns_intake_topic_arn or "—" }}</div>
+  </div>
+  {% else %}
+  <p class="empty">No client_config row.</p>
+  {% endif %}
+</section>
+
+{# ── Phase 9.1 Stage 1: Compliance ───────────────────────────────────────── #}
+<section>
+  <h2>Compliance</h2>
+  <div class="card" style="display:grid;grid-template-columns:220px 1fr;gap:8px 16px;max-width:720px;font-size:13px;">
+    <div class="label">Tier</div>
+    <div>
+      {% if config and config.tier == 'compliance-hipaa' %}<span class="badge badge-paused">HIPAA</span>
+      {% elif config %}<span class="badge">{{ config.tier }}</span>
+      {% else %}<span style="color:#bbb">—</span>{% endif %}
+    </div>
+    <div class="label">BAA signed</div><div><span style="color:#bbb">— not tracked here</span></div>
+    <div class="label">Encryption at rest</div><div>Postgres + S3 SSE (always-on)</div>
+    <div class="label">Last successful backup</div>
+    <div>
+      {% if health_snap and health_snap.backup_ok %}<span style="color:#0a0;">✓ recent</span>
+      {% elif health_snap %}<span style="color:#c80;">⚠ stale</span>
+      {% else %}<span style="color:#bbb">— Stage 3 will populate</span>{% endif %}
+    </div>
+    <div class="label">Phase 19 docs</div><div><span style="color:#bbb">— compliance attestation deliverable not yet written</span></div>
+  </div>
+</section>
+
+{# ── Phase 9.1 Stage 1: paperclipai (agents + skills + keys) ─────────────── #}
+<section>
+  <h2>paperclipai</h2>
+
+  <div class="card" style="margin-bottom:16px;display:grid;grid-template-columns:200px 1fr;gap:8px 16px;max-width:720px;font-size:13px;">
+    <div class="label">Company UUID</div>
+    <div style="font-family:ui-monospace,monospace;font-size:11px;color:#555;">{{ company.company_id }}</div>
+    <div class="label">Issue prefix</div><div><code>{{ company.issue_prefix }}</code></div>
+  </div>
+
+  <h3 style="font-size:14px;margin-top:16px;">Board API Keys ({{ board_keys | length }})</h3>
+  {% if board_keys %}
+  <table style="font-size:12px;">
+    <thead>
+      <tr><th>Name</th><th>User</th><th>Created</th><th>Last used</th><th>Expires</th></tr>
+    </thead>
+    <tbody>
+      {% for k in board_keys %}
+      <tr>
+        <td>{{ k.name }}</td>
+        <td style="color:#666;">{{ k.user_id }}</td>
+        <td style="color:#888;">{{ k.created_at.strftime("%Y-%m-%d") }}</td>
+        <td style="color:#888;">{{ k.last_used_at.strftime("%Y-%m-%d %H:%M") if k.last_used_at else "—" }}</td>
+        <td style="color:#888;">{{ k.expires_at.strftime("%Y-%m-%d") if k.expires_at else "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No board API keys for this client's members.</p>
+  {% endif %}
+
+  <h3 style="font-size:14px;margin-top:16px;">Agents ({{ agents_full | length }})</h3>
+  {% if agents_full %}
+  <table style="font-size:12px;">
+    <thead>
+      <tr><th>Name</th><th>Role</th><th>Status</th><th>Last heartbeat</th><th>Paused</th></tr>
+    </thead>
+    <tbody>
+      {% for a in agents_full %}
+      <tr>
+        <td><strong>{{ a.name }}</strong></td>
+        <td>{{ a.role }}</td>
+        <td>
+          <span class="badge badge-{{ a.status }}">{{ a.status }}</span>
+        </td>
+        <td style="color:#888;">{{ a.last_heartbeat_at.strftime("%Y-%m-%d %H:%M") if a.last_heartbeat_at else "—" }}</td>
+        <td style="color:#888;">
+          {% if a.paused_at %}{{ a.paused_at.strftime("%Y-%m-%d") }}{% if a.pause_reason %}<br><span style="font-size:10px;color:#aaa;">{{ a.pause_reason }}</span>{% endif %}{% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No agents.</p>
+  {% endif %}
+
+  <h3 style="font-size:14px;margin-top:16px;">Skills installed ({{ skills | length }})</h3>
+  {% if skills %}
+  <table style="font-size:12px;">
+    <thead>
+      <tr><th>Name</th><th>Source</th><th>Trust</th><th>Installed</th></tr>
+    </thead>
+    <tbody>
+      {% for s in skills %}
+      <tr>
+        <td><strong>{{ s.name }}</strong></td>
+        <td>{{ s.source_type }}</td>
+        <td>{{ s.trust_level }}</td>
+        <td style="color:#888;">{{ s.created_at.strftime("%Y-%m-%d") }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No skills installed.</p>
+  {% endif %}
+</section>
+
+<!-- Add-ons (existing Phase 9.0 section) -->
 <section>
   <h2>Add-ons</h2>
   <table>
@@ -83,6 +304,13 @@
             <button type="submit" class="toggle-btn toggle-btn-on">Enable</button>
           </form>
           {% endif %}
+          {% if addon.has_schema %}
+          <a href="/client/{{ company.company_id }}/addon/{{ addon.addon_key }}/configure"
+             class="toggle-btn"
+             style="display:inline-block;padding:4px 10px;margin-left:6px;background:#eef;color:#225;text-decoration:none;font-size:12px;">
+            Configure
+          </a>
+          {% endif %}
         </td>
       </tr>
       {% else %}
@@ -90,6 +318,51 @@
       {% endfor %}
     </tbody>
   </table>
+</section>
+
+{# ── Phase 9.1 Stage 1: Integrations placeholder ─────────────────────────── #}
+<section>
+  <h2>Integrations</h2>
+  <p style="color:#888;font-size:13px;">SaaS integrations (Nango — Phase 15) are not yet wired. This section will list connected accounts and their status once Nango lands.</p>
+</section>
+
+{# ── Phase 9.1 Stage 1: Billing placeholder ──────────────────────────────── #}
+<section>
+  <h2>Billing</h2>
+  <div class="card" style="display:grid;grid-template-columns:180px 1fr;gap:8px 16px;max-width:600px;font-size:13px;">
+    <div class="label">Plan tier</div><div>{{ config.tier if config else "—" }}</div>
+    <div class="label">Stripe subscription</div><div style="color:#bbb;">— manual billing (Stripe integration is Phase 21)</div>
+    <div class="label">Monthly budget</div>
+    <div>{% if company.budget_monthly_cents %}${{ "%.0f"|format(company.budget_monthly_cents / 100) }}{% else %}<span style="color:#bbb">unset</span>{% endif %}</div>
+    <div class="label">Spent (lifetime)</div>
+    <div>${{ "%.2f"|format(company.spent_monthly_cents / 100) }}</div>
+  </div>
+</section>
+
+{# ── Phase 9.1 Stage 1: Secrets (presence only) ──────────────────────────── #}
+<section>
+  <h2>Secrets ({{ secrets | length }})</h2>
+  <p style="font-size:11px;color:#888;margin-top:0;">Secret <em>presence</em> is shown — values are never displayed in the UI.</p>
+  {% if secrets %}
+  <table style="font-size:12px;">
+    <thead>
+      <tr><th>Name</th><th>Provider</th><th>Version</th><th>Created</th><th>Last updated</th></tr>
+    </thead>
+    <tbody>
+      {% for s in secrets %}
+      <tr>
+        <td><code>{{ s.name }}</code></td>
+        <td>{{ s.provider }}</td>
+        <td>v{{ s.latest_version }}</td>
+        <td style="color:#888;">{{ s.created_at.strftime("%Y-%m-%d") }}</td>
+        <td style="color:#888;">{{ s.updated_at.strftime("%Y-%m-%d") }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No secrets stored for this client. (Per-client API keys, OAuth tokens — populated as integrations are added.)</p>
+  {% endif %}
 </section>
 
 <!-- Recent Activity -->
@@ -158,7 +431,7 @@
   {% endif %}
 </section>
 
-<!-- Company metadata -->
+<!-- Company metadata (existing Phase 9.0 section) -->
 <section>
   <h2>Details</h2>
   <div class="card" style="display:grid;grid-template-columns:1fr 1fr;gap:16px 40px;max-width:600px;">

@@ -1,0 +1,117 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Onboarding status distribution",
+      "type": "piechart",
+      "datasource": {"type": "postgres", "uid": "paperclip"},
+      "targets": [{
+        "rawSql": "SELECT onboarding_status AS metric, count(*) AS value FROM client_configs GROUP BY onboarding_status",
+        "format": "table"
+      }],
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "title": "Tier distribution",
+      "type": "piechart",
+      "datasource": {"type": "postgres", "uid": "paperclip"},
+      "targets": [{
+        "rawSql": "SELECT tier AS metric, count(*) AS value FROM client_configs GROUP BY tier",
+        "format": "table"
+      }],
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0}
+    },
+    {
+      "id": 3,
+      "title": "Pending approvals (all clients)",
+      "type": "stat",
+      "datasource": {"type": "postgres", "uid": "paperclip"},
+      "targets": [{
+        "rawSql": "SELECT count(*) FROM approvals WHERE status = 'pending'",
+        "format": "table"
+      }],
+      "fieldConfig": {"defaults": {"thresholds": {"steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}},
+      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0}
+    },
+    {
+      "id": 4,
+      "title": "Failed onboarding count",
+      "type": "stat",
+      "datasource": {"type": "postgres", "uid": "paperclip"},
+      "targets": [{
+        "rawSql": "SELECT count(*) FROM client_configs WHERE onboarding_status = 'failed'",
+        "format": "table"
+      }],
+      "fieldConfig": {"defaults": {"thresholds": {"steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}},
+      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0}
+    },
+    {
+      "id": 5,
+      "title": "Latest health snapshot per client",
+      "type": "table",
+      "datasource": {"type": "postgres", "uid": "paperclip"},
+      "targets": [{
+        "rawSql": "SELECT DISTINCT ON (chs.client_uuid) c.name, chs.dns_ok, chs.ses_verified, chs.containers_ok, chs.backup_ok, chs.created_at AS snapshot_at FROM client_health_snapshots chs LEFT JOIN companies c ON c.id = chs.client_uuid ORDER BY chs.client_uuid, chs.created_at DESC",
+        "format": "table"
+      }],
+      "gridPos": {"h": 8, "w": 16, "x": 0, "y": 8}
+    },
+    {
+      "id": 6,
+      "title": "Recent operator actions",
+      "type": "table",
+      "datasource": {"type": "postgres", "uid": "paperclip"},
+      "targets": [{
+        "rawSql": "SELECT al.created_at, al.operator_email, al.action, al.addon_key, c.name AS client FROM operator_audit_log al LEFT JOIN companies c ON c.id = al.company_id ORDER BY al.created_at DESC LIMIT 30",
+        "format": "table"
+      }],
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8}
+    },
+    {
+      "id": 7,
+      "title": "Node CPU usage (srv1408380)",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "targets": [{
+        "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+        "legendFormat": "CPU % {{instance}}"
+      }],
+      "fieldConfig": {"defaults": {"unit": "percent", "max": 100, "min": 0}},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+    },
+    {
+      "id": 8,
+      "title": "Node memory usage",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "targets": [{
+        "expr": "(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100",
+        "legendFormat": "RAM % {{instance}}"
+      }],
+      "fieldConfig": {"defaults": {"unit": "percent", "max": 100, "min": 0}},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+    },
+    {
+      "id": 9,
+      "title": "Disk usage",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "targets": [{
+        "expr": "100 - ((node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) * 100)",
+        "legendFormat": "Disk % {{instance}}"
+      }],
+      "fieldConfig": {"defaults": {"unit": "percent", "max": 100, "min": 0, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 70}, {"color": "red", "value": 85}]}}},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24}
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": ["cfpa", "ops"],
+  "time": {"from": "now-24h", "to": "now"},
+  "title": "Operations",
+  "uid": "operations",
+  "version": 1
+}

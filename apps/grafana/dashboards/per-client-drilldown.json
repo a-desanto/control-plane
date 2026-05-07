@@ -1,0 +1,113 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "templating": {
+    "list": [{
+      "name": "company_id",
+      "type": "query",
+      "datasource": {"type": "postgres", "uid": "paperclip"},
+      "query": "SELECT id::text AS __value, name AS __text FROM companies ORDER BY name",
+      "refresh": 1,
+      "current": {"text": "Caring First", "value": "bd80728d-6755-4b63-a9b9-c0e24526c820"}
+    }]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "MTD spend",
+      "type": "stat",
+      "datasource": {"type": "postgres", "uid": "paperclip"},
+      "fieldConfig": {"defaults": {"unit": "currencyUSD"}},
+      "targets": [{
+        "rawSql": "SELECT SUM(cost_cents)::float/100 FROM cost_events WHERE company_id = '${company_id}'::uuid AND occurred_at >= date_trunc('month', NOW())",
+        "format": "table"
+      }],
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "title": "Active agents",
+      "type": "stat",
+      "datasource": {"type": "postgres", "uid": "paperclip"},
+      "targets": [{
+        "rawSql": "SELECT count(*) FROM agents WHERE company_id = '${company_id}'::uuid AND status != 'paused'",
+        "format": "table"
+      }],
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0}
+    },
+    {
+      "id": 3,
+      "title": "Documents (24h)",
+      "type": "stat",
+      "datasource": {"type": "postgres", "uid": "paperclip"},
+      "targets": [{
+        "rawSql": "SELECT count(*) FROM document_intake WHERE company_id = '${company_id}'::uuid AND created_at >= NOW() - INTERVAL '24 hours'",
+        "format": "table"
+      }],
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0}
+    },
+    {
+      "id": 4,
+      "title": "Pending approvals",
+      "type": "stat",
+      "datasource": {"type": "postgres", "uid": "paperclip"},
+      "targets": [{
+        "rawSql": "SELECT count(*) FROM approvals WHERE company_id = '${company_id}'::uuid AND status = 'pending'",
+        "format": "table"
+      }],
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0}
+    },
+    {
+      "id": 5,
+      "title": "Cost by agent (30d)",
+      "type": "barchart",
+      "datasource": {"type": "postgres", "uid": "paperclip"},
+      "targets": [{
+        "rawSql": "SELECT a.name AS agent, SUM(ce.cost_cents)::float/100 AS dollars FROM cost_events ce LEFT JOIN agents a ON a.id = ce.agent_id WHERE ce.company_id = '${company_id}'::uuid AND ce.occurred_at >= NOW() - INTERVAL '30 days' GROUP BY a.name ORDER BY dollars DESC",
+        "format": "table"
+      }],
+      "fieldConfig": {"defaults": {"unit": "currencyUSD"}},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+    },
+    {
+      "id": 6,
+      "title": "Spend over time (24h hourly)",
+      "type": "timeseries",
+      "datasource": {"type": "postgres", "uid": "paperclip"},
+      "targets": [{
+        "rawSql": "SELECT date_trunc('hour', occurred_at) AS time, model, SUM(cost_cents)::float/100 AS value FROM cost_events WHERE company_id = '${company_id}'::uuid AND occurred_at >= NOW() - INTERVAL '24 hours' GROUP BY 1, 2 ORDER BY 1",
+        "format": "time_series"
+      }],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+    },
+    {
+      "id": 7,
+      "title": "Recent activity (last 50)",
+      "type": "table",
+      "datasource": {"type": "postgres", "uid": "paperclip"},
+      "targets": [{
+        "rawSql": "SELECT created_at, actor_type, action, entity_type FROM activity_log WHERE company_id = '${company_id}'::uuid ORDER BY created_at DESC LIMIT 50",
+        "format": "table"
+      }],
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 12}
+    },
+    {
+      "id": 8,
+      "title": "Document intake (recent)",
+      "type": "table",
+      "datasource": {"type": "postgres", "uid": "paperclip"},
+      "targets": [{
+        "rawSql": "SELECT id, source_type, doc_type, status, created_at FROM document_intake WHERE company_id = '${company_id}'::uuid ORDER BY created_at DESC LIMIT 25",
+        "format": "table"
+      }],
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 22}
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["cfpa", "client"],
+  "time": {"from": "now-30d", "to": "now"},
+  "title": "Per-Client Drill-Down",
+  "uid": "per-client-drilldown",
+  "version": 1
+}

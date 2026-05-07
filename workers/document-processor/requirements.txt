@@ -1,0 +1,4 @@
+asyncpg==0.30.0
+httpx==0.27.2
+boto3==1.35.81
+structlog==24.4.0

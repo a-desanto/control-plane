@@ -1,0 +1,43 @@
+# Phase 15 — Nango self-hosted SaaS integration layer
+# Drop into apps/nango/ in a-desanto/control-plane, deploy via Coolify (Docker Compose mode)
+# DNS already pre-staged: nango.cfpa.sekuirtek.com → 187.77.213.142
+# License: Elastic License 2.0 (permits MSP self-hosted use as internal component)
+
+version: "3.8"
+
+services:
+  nango-server:
+    image: nangohq/nango-server:latest
+    restart: unless-stopped
+    environment:
+      NANGO_DB_USER: nango
+      NANGO_DB_PASSWORD: ${NANGO_DB_PASSWORD:?required}
+      NANGO_DB_HOST: nango-db
+      NANGO_DB_PORT: "5432"
+      NANGO_DB_NAME: nango
+      NANGO_DB_SSL: "false"
+      NANGO_ENCRYPTION_KEY: ${NANGO_ENCRYPTION_KEY:?required}
+      SERVER_PORT: "3003"
+      NANGO_SERVER_URL: https://nango.cfpa.sekuirtek.com
+      NANGO_PUBLIC_SERVER_URL: https://nango.cfpa.sekuirtek.com
+      TELEMETRY: "false"
+    depends_on:
+      - nango-db
+    expose: ["3003"]
+    labels:
+      caddy_0: https://nango.cfpa.sekuirtek.com
+      caddy_0.reverse_proxy: "{{upstreams 3003}}"
+
+  nango-db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nango
+      POSTGRES_PASSWORD: ${NANGO_DB_PASSWORD:?required}
+      POSTGRES_DB: nango
+    volumes:
+      - nango-db-data:/var/lib/postgresql/data
+    expose: ["5432"]
+
+volumes:
+  nango-db-data:

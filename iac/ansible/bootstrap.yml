@@ -1,0 +1,47 @@
+---
+# Phase 5.7 — VPS bootstrap: Docker, Coolify agent, ufw, time sync
+# Run with: ansible-playbook -i <vps_ip>, bootstrap.yml -u root
+- hosts: all
+  become: true
+  vars:
+    coolify_server_token: "{{ lookup('env', 'COOLIFY_SERVER_TOKEN') | mandatory }}"
+    coolify_url: "{{ lookup('env', 'COOLIFY_URL') | default('https://coolify.cfpa.sekuirtek.com', true) }}"
+
+  tasks:
+    - name: apt update
+      apt: { update_cache: yes }
+
+    - name: install baseline packages
+      apt:
+        name: [docker.io, docker-compose-plugin, ufw, chrony, curl, wget, htop, jq]
+        state: present
+
+    - name: enable + start docker
+      systemd: { name: docker, enabled: yes, state: started }
+
+    - name: enable + start chrony
+      systemd: { name: chrony, enabled: yes, state: started }
+
+    - name: ufw default policies
+      ufw: { policy: deny, direction: incoming }
+    - name: ufw allow ssh
+      ufw: { rule: allow, port: "22" }
+    - name: ufw allow http/https
+      ufw: { rule: allow, port: "{{ item }}" }
+      loop: ["80", "443"]
+    - name: ufw enable
+      ufw: { state: enabled }
+
+    - name: register VPS with Coolify (control plane)
+      uri:
+        url: "{{ coolify_url }}/api/v1/servers"
+        method: POST
+        headers: { Authorization: "Bearer {{ coolify_server_token }}" }
+        body_format: json
+        body:
+          name: "{{ inventory_hostname }}"
+          ip: "{{ ansible_default_ipv4.address }}"
+          port: 22
+          user: root
+        status_code: [200, 201, 409]   # 409 = already registered
+      register: coolify_reg

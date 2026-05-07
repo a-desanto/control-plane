@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Configure {{ schema.title }} — {{ company.name }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <a href="/client/{{ company.company_id }}" class="back-link">&larr; {{ company.name }}</a>
+    <h1 style="margin-top:6px;">Configure: {{ schema.title }}</h1>
+    <div style="font-size:12px;color:#888;margin-top:4px;">
+      <code>{{ addon_key }}</code> ·
+      {% if addon_row.enabled %}<span class="addon-pill addon-on">Enabled</span>
+      {% else %}<span class="addon-pill addon-off">Disabled</span>{% endif %}
+    </div>
+  </div>
+</div>
+
+<section>
+  <form method="post" action="/client/{{ company.company_id }}/addon/{{ addon_key }}/configure"
+        style="max-width:640px;display:flex;flex-direction:column;gap:18px;">
+    {% for field in schema.fields %}
+    <div class="form-row">
+      <label for="f-{{ field.key }}" style="display:block;font-weight:600;font-size:13px;margin-bottom:4px;">
+        {{ field.label }}
+      </label>
+
+      {% if field.type == "bool" %}
+        <input type="checkbox" id="f-{{ field.key }}" name="{{ field.key }}" {% if current[field.key] %}checked{% endif %}>
+
+      {% elif field.type == "enum" %}
+        <select id="f-{{ field.key }}" name="{{ field.key }}" style="font-size:13px;padding:4px 6px;">
+          {% for value, label in field.choices %}
+          <option value="{{ value }}" {% if current[field.key] == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+
+      {% elif field.type == "int" %}
+        <input type="number" id="f-{{ field.key }}" name="{{ field.key }}"
+               value="{{ current[field.key] }}"
+               {% if field.min is defined %}min="{{ field.min }}"{% endif %}
+               {% if field.max is defined %}max="{{ field.max }}"{% endif %}
+               style="font-size:13px;padding:4px 6px;width:120px;">
+
+      {% elif field.type == "time_of_day" %}
+        <input type="time" id="f-{{ field.key }}" name="{{ field.key }}"
+               value="{{ current[field.key] }}" style="font-size:13px;padding:4px 6px;">
+
+      {% else %}
+        <input type="text" id="f-{{ field.key }}" name="{{ field.key }}"
+               value="{{ current[field.key] | default('', true) }}"
+               style="font-size:13px;padding:4px 6px;width:100%;max-width:480px;">
+      {% endif %}
+
+      {% if field.help %}
+      <div style="font-size:11px;color:#888;margin-top:4px;">{{ field.help }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    <div style="display:flex;gap:12px;align-items:center;margin-top:8px;">
+      <button type="submit" class="toggle-btn toggle-btn-on" style="padding:6px 14px;">Save</button>
+      <a href="/client/{{ company.company_id }}" style="font-size:13px;color:#888;">Cancel</a>
+    </div>
+  </form>
+</section>
+
+<section style="margin-top:32px;">
+  <h2 style="font-size:14px;color:#888;">Current stored settings</h2>
+  <pre style="background:#f5f5f5;padding:10px;border-radius:4px;font-size:11px;max-width:640px;">{{ addon_row.settings | tojson(indent=2) }}</pre>
+</section>
+
+{% endblock %}

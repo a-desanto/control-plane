@@ -1,7 +1,7 @@
 # Phase 12 — Document Workflows Runbook
 
-**Last updated:** 2026-05-05  
-**Status:** Stage 1 — DONE 2026-05-05. Stage 1.5 — IN PROGRESS 2026-05-05 (SES receipt rule pending admin credential run). Stage 2 (PaddleOCR + document-agent) — Substage A complete (paddleocr-service deployed).
+**Last updated:** 2026-05-06  
+**Status:** Stage 1 — DONE. Stage 1.5 — DONE (SES live). Stage 2 — DONE 2026-05-06.
 
 ---
 
@@ -261,13 +261,35 @@ pool.query(\"SELECT id, source_type, source_uri, raw_pdf_s3_key, status, created
 
 ---
 
-## Stage 2 — OCR + Document Agent (NEXT)
+## Stage 2 — OCR + Document Agent (DONE 2026-05-06)
 
-Stage 2 adds:
-- PaddleOCR service (Docker container, GPU optional)
-- Textract fallback (AWS SDK, pay-per-page)
-- document-agent: picks up `status='received'` rows, runs OCR, classifies, updates rows and populates `invoices`/`contracts`/`intake_forms`
-- Status flow: `received` → `ocr_pending` → `ocr_done` → `classified` → `done`
+| Component | Location | Status |
+|-----------|----------|--------|
+| document-processor worker | `workers/document-processor/` | Running |
+| document-agent (paperclipai) | ID: `89876cf7-34a4-4d35-b362-42ace2dc2b1c` | idle, skill attached |
+| document_workflow skill | ID: `bb777c5a-fc3f-4db7-a55d-dcb5da43476f` | installed |
+| OCR routing logic | `workers/document-processor/main.py` | standard: 0.80 / HIPAA: 0.85 |
+| First document processed | `8223fa0c` (Caring_First_Intake_and_Care_Plan.pdf) | done, intake_form |
+
+### Known blocker: Textract IAM permissions
+
+`backup-runner-srv1408380` IAM user lacks `textract:*` permissions. The fallback to Textract
+fires when PaddleOCR returns 422 (corrupt/empty PDF) or confidence < threshold.
+
+**Fix**: Run the following with admin AWS credentials:
+```python
+iam.put_user_policy(
+    UserName='backup-runner-srv1408380',
+    PolicyName='TextractDocumentProcessing',
+    PolicyDocument=json.dumps({"Version":"2012-10-17","Statement":[{
+        "Effect":"Allow","Action":["textract:StartDocumentTextDetection",
+        "textract:GetDocumentTextDetection","textract:StartDocumentAnalysis",
+        "textract:GetDocumentAnalysis"],"Resource":"*"}]})
+)
+```
+
+Until then, documents that fail PaddleOCR will land in `failed` state. Real PDFs from email
+attachments process successfully via PaddleOCR (confidence typically 0.95+).
 
 ---
 
