@@ -1,0 +1,77 @@
+{
+  "aws_last_checked": "2026-05-03",
+  "subscriptions": [
+    {
+      "vendor": "Hostinger VPS",
+      "category": "Infrastructure",
+      "cost_usd_monthly": 20,
+      "billing": "monthly",
+      "notes": "srv1408380 control VPS. Add new rows per-client when each client VPS goes live.",
+      "portal_url": "https://hpanel.hostinger.com/billing"
+    },
+    {
+      "vendor": "Cloudflare R2 (decommissioning)",
+      "category": "Object storage",
+      "cost_usd_monthly": 5,
+      "billing": "monthly",
+      "notes": "Cancel after Stage 5 R2->S3 migration verified. Set to $0 once cancelled.",
+      "portal_url": "https://dash.cloudflare.com/"
+    },
+    {
+      "vendor": "AWS",
+      "category": "Bedrock / S3 / Textract",
+      "cost_usd_monthly": null,
+      "billing": "usage",
+      "notes": "Variable - see live cost_events for paperclipai LLM portion. Bedrock infra + S3 backups + IAM. Open Cost Explorer for full picture.",
+      "portal_url": "https://console.aws.amazon.com/cost-management/home"
+    },
+    {
+      "vendor": "GitHub",
+      "category": "Source control",
+      "cost_usd_monthly": 0,
+      "billing": "monthly",
+      "notes": "Free tier covers current usage. Re-evaluate at first hire (Team $4/user/mo) or 2k Actions minutes/mo.",
+      "portal_url": "https://github.com/settings/billing"
+    },
+    {
+      "vendor": "Langfuse",
+      "category": "Observability",
+      "cost_usd_monthly": 0,
+      "billing": "self-hosted",
+      "notes": "Self-hosted on srv1408380 - $0 unless migrated to Langfuse Cloud (~$59/mo Pro tier).",
+      "portal_url": "https://langfuse.cfpa.sekuirtek.com/"
+    },
+    {
+      "vendor": "Bitwarden",
+      "category": "Secrets",
+      "cost_usd_monthly": 1,
+      "billing": "annual",
+      "notes": "Bitwarden Premium ($10/yr ~ $0.83/mo). Migrated from 1Password 2026-05-04. Stores all platform credentials, IAM keys, vendor portals.",
+      "portal_url": "https://vault.bitwarden.com/"
+    },
+    {
+      "vendor": "Healthchecks.io",
+      "category": "Monitoring",
+      "cost_usd_monthly": 5,
+      "billing": "monthly",
+      "notes": "Hobbyist plan, covers current checks. Re-evaluate at 20+ checks.",
+      "portal_url": "https://healthchecks.io/projects/"
+    },
+    {
+      "vendor": "Anthropic Claude (Code subscription)",
+      "category": "Developer tooling",
+      "cost_usd_monthly": 100,
+      "billing": "monthly",
+      "notes": "Adjust to actual tier. Pro=$20, Max=$100-200.",
+      "portal_url": "https://claude.ai/settings/billing"
+    },
+    {
+      "vendor": "Namecheap",
+      "category": "Domain / DNS",
+      "cost_usd_monthly": 1,
+      "billing": "annual",
+      "notes": "sekuirtek.com domain registration ~$12/yr. Wildcard *.cfpa.sekuirtek.com on Namecheap DNS.",
+      "portal_url": "https://ap.www.namecheap.com/"
+    }
+  ]
+}

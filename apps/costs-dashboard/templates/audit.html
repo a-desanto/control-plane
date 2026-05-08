@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Log — CFPA Operator{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Audit Log</h1>
+  <span class="page-header-meta">Last 100 operator actions</span>
+</div>
+
+{% if rows %}
+<table>
+  <thead>
+    <tr>
+      <th>Time</th>
+      <th>Operator</th>
+      <th>Client</th>
+      <th>Action</th>
+      <th>Add-on</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+    <tr>
+      <td style="color:#888;white-space:nowrap;">{{ row.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+      <td>{{ row.operator_email }}</td>
+      <td>
+        {% if row.company_id %}
+          <a href="/client/{{ row.company_id }}">{{ row.company_name or row.company_id[:8] }}</a>
+        {% else %}
+          <span style="color:#bbb">—</span>
+        {% endif %}
+      </td>
+      <td>
+        <span class="tag {% if 'enabled' in row.action %}tag-on{% elif 'disabled' in row.action %}tag-off{% endif %}">
+          {{ row.action }}
+        </span>
+      </td>
+      <td style="color:#666;">{{ row.addon_key or "—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">No operator actions recorded yet.</p>
+{% endif %}
+{% endblock %}
