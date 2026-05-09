@@ -1,0 +1,96 @@
+services:
+  opensign-server:
+    image: opensign/opensignserver:main
+    container_name: opensign-opensign-server-1
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      appName: "Caring First — Document Signing"
+      APP_ID: opensign
+      MASTER_KEY: ${MASTER_KEY}
+      MONGODB_URI: mongodb://opensign:${MONGO_PASSWORD}@opensign-mongo:27017/opensign?authSource=admin
+      PARSE_MOUNT: /app
+      SERVER_URL: https://sign.cfpa.sekuirtek.com/api/app
+      PUBLIC_URL: https://sign.cfpa.sekuirtek.com
+      USE_LOCAL: "true"
+      PFX_BASE64: ${PFX_BASE64}
+      PASS_PHRASE: ${PASS_PHRASE}
+      SMTP_ENABLE: "true"
+      SMTP_HOST: ${SMTP_HOST:-email-smtp.us-east-2.amazonaws.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER_EMAIL: ${SMTP_USER_EMAIL:-noreply@cfpa.sekuirtek.com}
+      SMTP_PASS: ${SMTP_PASS}
+    volumes:
+      - /data/cfpa-volumes/opensign/files:/usr/src/app/files
+    depends_on:
+      - opensign-mongo
+    expose:
+      - "8080"
+    networks:
+      - coolify
+      - opensign-internal
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.https-0-opensign-api.entryPoints: "https"
+      traefik.http.routers.https-0-opensign-api.rule: "Host(`sign.cfpa.sekuirtek.com`) && PathPrefix(`/api`)"
+      traefik.http.routers.https-0-opensign-api.service: "https-0-opensign-api"
+      traefik.http.routers.https-0-opensign-api.tls: "true"
+      traefik.http.routers.https-0-opensign-api.tls.certresolver: "letsencrypt"
+      traefik.http.routers.https-0-opensign-api.priority: "100"
+      traefik.http.services.https-0-opensign-api.loadbalancer.server.port: "8080"
+
+  opensign-client:
+    image: opensign/opensign:main
+    container_name: opensign-opensign-client-1
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PUBLIC_URL: https://sign.cfpa.sekuirtek.com
+      REACT_APP_APPID: opensign
+    depends_on:
+      - opensign-server
+    expose:
+      - "3000"
+    networks:
+      - coolify
+      - opensign-internal
+    labels:
+      traefik.enable: "true"
+      traefik.http.middlewares.gzip.compress: "true"
+      traefik.http.middlewares.redirect-to-https.redirectscheme.scheme: "https"
+      traefik.http.routers.http-0-opensign-client.entryPoints: "http"
+      traefik.http.routers.http-0-opensign-client.middlewares: "redirect-to-https"
+      traefik.http.routers.http-0-opensign-client.rule: "Host(`sign.cfpa.sekuirtek.com`) && PathPrefix(`/`)"
+      traefik.http.routers.http-0-opensign-client.service: "http-0-opensign-client"
+      traefik.http.routers.https-0-opensign-client.entryPoints: "https"
+      traefik.http.routers.https-0-opensign-client.middlewares: "gzip"
+      traefik.http.routers.https-0-opensign-client.rule: "Host(`sign.cfpa.sekuirtek.com`) && PathPrefix(`/`)"
+      traefik.http.routers.https-0-opensign-client.service: "https-0-opensign-client"
+      traefik.http.routers.https-0-opensign-client.tls: "true"
+      traefik.http.routers.https-0-opensign-client.tls.certresolver: "letsencrypt"
+      traefik.http.routers.https-0-opensign-client.priority: "10"
+      traefik.http.services.http-0-opensign-client.loadbalancer.server.port: "3000"
+      traefik.http.services.https-0-opensign-client.loadbalancer.server.port: "3000"
+
+  opensign-mongo:
+    image: mongo:7
+    container_name: opensign-opensign-mongo-1
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: opensign
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_INITDB_DATABASE: opensign
+    volumes:
+      - /data/cfpa-volumes/opensign/mongo-data:/data/db
+    expose:
+      - "27017"
+    networks:
+      - opensign-internal
+    command: ["mongod", "--bind_ip_all", "--auth", "--quiet"]
+
+networks:
+  coolify:
+    external: true
+    name: coolify
+  opensign-internal:
+    driver: bridge
