@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Provisioning {{ company.name or company_id }} — CFPA Operator{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <a href="/clients" class="back-link">&larr; Clients</a>
+    <h1 style="margin-top:6px;">Provisioning: {{ company.name or company_id }}</h1>
+    {% if config %}
+    <div style="font-size:12px;color:#888;margin-top:4px;">
+      slug=<code>{{ config.slug }}</code> ·
+      tier={{ config.tier }} ·
+      status=<strong>{{ config.onboarding_status }}</strong>
+      {% if config.onboarding_started_at %}· started {{ config.onboarding_started_at.strftime("%H:%M:%S UTC") }}{% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<section>
+  <p style="font-size:13px;color:#666;">Live event feed — polls every 2 seconds. Page returns automatically when provisioning completes.</p>
+
+  <div id="events"
+       hx-get="/client/{{ company_id }}/provisioning/events"
+       hx-trigger="load, every 2s"
+       hx-swap="innerHTML">
+    Loading...
+  </div>
+</section>
+
+<script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
+
+{% endblock %}

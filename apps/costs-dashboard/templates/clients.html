@@ -3,9 +3,15 @@
 {% block title %}Clients — CFPA Operator{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1>Clients</h1>
-  <span class="page-header-meta">{{ clients | length }} client{{ 's' if clients | length != 1 }}</span>
+<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;">
+  <div>
+    <h1 style="display:inline;">Clients</h1>
+    <span class="page-header-meta" style="margin-left:8px;">{{ clients | length }} client{{ 's' if clients | length != 1 }}</span>
+  </div>
+  <a href="/clients/new"
+     style="background:#0a0;color:#fff;padding:6px 14px;border-radius:4px;text-decoration:none;font-size:13px;">
+    + New Client
+  </a>
 </div>
 
 {% if clients %}
@@ -48,12 +54,13 @@
           <span style="color:#bbb">none</span>
         {% endif %}
       </td>
-      <td style="color:#888">{{ c.created_at.strftime("%Y-%m-%d") }}</td>
+      <td style="color:#888;">{{ c.created_at.strftime("%Y-%m-%d") }}</td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
 {% else %}
-<p class="empty">No clients found.</p>
+<p class="empty">No clients yet. Click "+ New Client" to onboard your first.</p>
 {% endif %}
+
 {% endblock %}

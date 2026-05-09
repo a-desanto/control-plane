@@ -32,16 +32,16 @@ RULE_SET   = 'cfpa-inbound'
 RULE_NAME  = 'cfpa-sekuirtek-com-intake'
 INBOX_PFX  = 'inbox/'
 
-ADMIN_KEY    = os.environ.get('AWS_ADMIN_ACCESS_KEY_ID')
-ADMIN_SECRET = os.environ.get('AWS_ADMIN_SECRET_ACCESS_KEY')
+AWS_KEY    = os.environ.get('AWS_ACCESS_KEY_ID')
+AWS_SECRET = os.environ.get('AWS_SECRET_ACCESS_KEY')
 
-if not ADMIN_KEY or not ADMIN_SECRET:
-    print("ERROR: Set AWS_ADMIN_ACCESS_KEY_ID and AWS_ADMIN_SECRET_ACCESS_KEY")
+if not AWS_KEY or not AWS_SECRET:
+    print("ERROR: Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY")
     sys.exit(1)
 
 session = boto3.Session(
-    aws_access_key_id=ADMIN_KEY,
-    aws_secret_access_key=ADMIN_SECRET,
+    aws_access_key_id=AWS_KEY,
+    aws_secret_access_key=AWS_SECRET,
     region_name=REGION,
 )
 s3  = session.client('s3')
@@ -49,7 +49,7 @@ ses = session.client('ses')
 
 
 # ── 1. S3 bucket policy — allow SES to write into inbox/ ─────────────────────
-print(f"[1/4] Updating S3 bucket policy: allow ses.amazonaws.com → {BUCKET}/inbox/*")
+print(f"[1/4] S3 bucket policy: allow ses.amazonaws.com → {BUCKET}/inbox/*")
 
 ses_policy_sid = 'AllowSESInboundPuts'
 bucket_arn = f'arn:aws:s3:::{BUCKET}'
@@ -67,21 +67,24 @@ ses_statement = {
 }
 
 try:
-    existing = json.loads(s3.get_bucket_policy(Bucket=BUCKET)['Policy'])
+    try:
+        existing = json.loads(s3.get_bucket_policy(Bucket=BUCKET)['Policy'])
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchBucketPolicy':
+            existing = {"Version": "2012-10-17", "Statement": []}
+        else:
+            raise
+    existing['Statement'] = [
+        s for s in existing['Statement'] if s.get('Sid') != ses_policy_sid
+    ]
+    existing['Statement'].append(ses_statement)
+    s3.put_bucket_policy(Bucket=BUCKET, Policy=json.dumps(existing))
+    print(f"      Bucket policy updated — SID '{ses_policy_sid}' set")
 except ClientError as e:
-    if e.response['Error']['Code'] == 'NoSuchBucketPolicy':
-        existing = {"Version": "2012-10-17", "Statement": []}
-    else:
-        raise
-
-# Remove any stale version of the same SID, then append
-existing['Statement'] = [
-    s for s in existing['Statement'] if s.get('Sid') != ses_policy_sid
-]
-existing['Statement'].append(ses_statement)
-
-s3.put_bucket_policy(Bucket=BUCKET, Policy=json.dumps(existing))
-print(f"      Bucket policy updated — SID '{ses_policy_sid}' set")
+    print(f"      SKIPPED (no s3:PutBucketPolicy permission): {e.response['Error']['Code']}")
+    print(f"      Apply manually in AWS Console → S3 → {BUCKET} → Permissions → Bucket policy:")
+    manual_policy = {"Version": "2012-10-17", "Statement": [ses_statement]}
+    print(json.dumps(manual_policy, indent=4))
 
 
 # ── 2. Create receipt rule set (idempotent) ───────────────────────────────────

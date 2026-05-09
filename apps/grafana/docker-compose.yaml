@@ -1,0 +1,61 @@
+# Phase 5.5 — Grafana + Prometheus + Loki for fleet observability
+# Drop into apps/grafana/ in a-desanto/control-plane, deploy via Coolify (Docker Compose mode)
+# DNS already exists: grafana.cfpa.sekuirtek.com → 187.77.213.142
+
+version: "3.8"
+
+services:
+  grafana:
+    image: grafana/grafana:11.4.0
+    restart: unless-stopped
+    environment:
+      GF_SERVER_ROOT_URL: https://grafana.cfpa.sekuirtek.com
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_ADMIN_USER: ${GF_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD:?required}
+      GF_INSTALL_PLUGINS: ""
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./provisioning:/etc/grafana/provisioning:ro
+      - ./dashboards:/var/lib/grafana/dashboards:ro
+    expose: ["3000"]
+    labels:
+      caddy_0: https://grafana.cfpa.sekuirtek.com
+      caddy_0.reverse_proxy: "{{upstreams 3000}}"
+
+  prometheus:
+    image: prom/prometheus:v3.0.1
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+    volumes:
+      - prometheus-data:/prometheus
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    expose: ["9090"]
+
+  loki:
+    image: grafana/loki:3.3.2
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki-data:/loki
+      - ./loki-config.yaml:/etc/loki/local-config.yaml:ro
+    expose: ["3100"]
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    volumes:
+      - /:/host:ro,rslave
+    pid: host
+    expose: ["9100"]
+
+volumes:
+  grafana-data:
+  prometheus-data:
+  loki-data:

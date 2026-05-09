@@ -1,0 +1,17 @@
+services:
+  document-processor:
+    build:
+      context: .
+    image: document-processor:latest
+    container_name: document-processor
+    restart: always
+    networks:
+      - coolify
+    env_file:
+      - .env
+    # No exposed ports — pure worker
+
+networks:
+  coolify:
+    external: true
+    name: coolify

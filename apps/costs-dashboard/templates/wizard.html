@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}New Client — CFPA Operator{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <a href="/clients" class="back-link">&larr; Clients</a>
+    <h1 style="margin-top:6px;">+ New Client</h1>
+  </div>
+</div>
+
+<form method="post" action="/clients/new" style="max-width:760px;display:flex;flex-direction:column;gap:24px;">
+
+  <section>
+    <h2>1 · Basic info</h2>
+    <div class="card" style="display:grid;grid-template-columns:200px 1fr;gap:10px 16px;font-size:13px;">
+      <label for="display_name">Display name *</label>
+      <input type="text" id="display_name" name="display_name" required placeholder="Caring First" style="padding:6px;">
+
+      <label for="slug">Slug *</label>
+      <input type="text" id="slug" name="slug" required pattern="[a-z][a-z0-9]{1,15}"
+             placeholder="cfpa" style="padding:6px;font-family:ui-monospace,monospace;">
+
+      <label for="vertical">Vertical</label>
+      <select id="vertical" name="vertical" style="padding:6px;">
+        <option value="medical">Medical</option>
+        <option value="legal">Legal</option>
+        <option value="accounting">Accounting</option>
+        <option value="home_services">Home Services</option>
+        <option value="real_estate">Real Estate</option>
+        <option value="other">Other</option>
+      </select>
+
+      <label for="primary_contact_email">Operator contact email</label>
+      <input type="email" id="primary_contact_email" name="primary_contact_email" style="padding:6px;">
+    </div>
+  </section>
+
+  <section>
+    <h2>2 · Infrastructure</h2>
+    <div class="card" style="display:grid;grid-template-columns:200px 1fr;gap:10px 16px;font-size:13px;">
+      <label for="tier">Tier *</label>
+      <select id="tier" name="tier" required style="padding:6px;">
+        <option value="standard">Standard SMB</option>
+        <option value="compliance-hipaa">Compliance / HIPAA</option>
+      </select>
+
+      <label for="vps_provider">VPS provider</label>
+      <select id="vps_provider" name="vps_provider" style="padding:6px;">
+        <option value="shared-srv1408380">Shared (srv1408380, single-tenant phase)</option>
+        <option value="hostinger">Hostinger (own VPS)</option>
+        <option value="linode">Linode (HIPAA tier)</option>
+        <option value="aws">AWS (Premium tier)</option>
+      </select>
+
+      <label for="vps_region">VPS region</label>
+      <input type="text" id="vps_region" name="vps_region" value="us-east-2" style="padding:6px;">
+
+      <label for="vps_size">VPS size</label>
+      <input type="text" id="vps_size" name="vps_size" value="shared" style="padding:6px;">
+    </div>
+  </section>
+
+  <section>
+    <h2>3 · Add-ons</h2>
+    <div class="card" style="font-size:13px;">
+      {% for k in addon_keys %}
+      <label style="display:block;padding:6px 0;cursor:pointer;">
+        <input type="checkbox" name="{{ k }}"> {{ addon_titles[k] }}
+        <code style="margin-left:8px;color:#888;font-size:11px;">{{ k }}</code>
+      </label>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section>
+    <h2>4 · Branding &amp; client contact</h2>
+    <div class="card" style="display:grid;grid-template-columns:200px 1fr;gap:10px 16px;font-size:13px;">
+      <label for="client_legal_name">Client legal name</label>
+      <input type="text" id="client_legal_name" name="client_legal_name" placeholder="Caring First, LLC." style="padding:6px;">
+
+      <label for="client_owner_email">Client owner email</label>
+      <input type="email" id="client_owner_email" name="client_owner_email" style="padding:6px;">
+
+      <label for="notes">Notes</label>
+      <textarea id="notes" name="notes" rows="3" style="padding:6px;"></textarea>
+    </div>
+  </section>
+
+  <section>
+    <h2>5 · Provision</h2>
+    <p style="font-size:13px;color:#666;">Submitting will run the orchestrator immediately. You'll be redirected to a live progress page. Estimated time: ~10 minutes (most provisioning steps are stubs in this build — see <code>provisioning.py</code> TODOs).</p>
+    <button type="submit" style="background:#c40;color:#fff;padding:10px 24px;border:0;border-radius:4px;font-size:14px;cursor:pointer;">
+      Provision client
+    </button>
+  </section>
+
+</form>
+
+{% endblock %}
