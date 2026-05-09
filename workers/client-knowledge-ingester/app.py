@@ -1,10 +1,7 @@
 """
 client-knowledge-ingester
-Reads from Redis ck:ingest:queue, embeds via Cohere Embed v4 on Bedrock,
+Reads from Redis ck:ingest:queue, embeds via self-hosted BGE-M3 (text-embeddings-inference),
 writes to client_knowledge pgvector DB. Also exposes /upload REST endpoint.
-
-Auth: AWS Bearer token (same pattern as bedrock-proxy, not SigV4/boto3).
-Embed pricing: Cohere Embed v4 on Bedrock — VERIFY_PRICING constant below.
 """
 import asyncio
 import hashlib
@@ -21,28 +18,26 @@ import tiktoken
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-# ── Pricing note ──────────────────────────────────────────────────────────────
-# UNVERIFIED — update once confirmed via AWS Bedrock pricing page.
-# Cohere Embed-English-v3 on Bedrock = $0.10/1M tokens; v4 likely similar.
-_EMBED_PRICE_PER_1M_USD = 0.10
+# Self-hosted BGE-M3 — marginal cost is $0 (compute already paid).
+# Kept at 0.0 to preserve the token-count audit trail in cost_events.
+_EMBED_PRICE_PER_1M_USD = 0.0
+_EMBED_MODEL_NAME = "bge-m3"
 
 # ── Config ────────────────────────────────────────────────────────────────────
 CKDB_URL = os.environ["CKDB_URL"]
 PAPERCLIP_DB_URL = os.environ["PAPERCLIP_DB_URL"]
-AWS_BEARER_TOKEN = os.environ["AWS_BEARER_TOKEN_BEDROCK"]
+EMBEDDINGS_URL = os.environ.get("EMBEDDINGS_URL", "http://embeddings:8080")
 REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
 REDIS_PORT = int(os.environ.get("REDIS_PORT", "6379"))
 REDIS_DB = int(os.environ.get("REDIS_DB", "2"))
 REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD") or None  # None → no auth
-AWS_REGION = os.environ.get("AWS_REGION", "us-east-2")
-EMBED_MODEL_ID = os.environ.get("EMBED_MODEL_ID", "cohere.embed-v4:0")
 # LANGFUSE_HOST / LANGFUSE_SECRET_KEY / LANGFUSE_PUBLIC_KEY read automatically by get_client()
 
 QUEUE_KEY = "ck:ingest:queue"
 DLQ_KEY = "ck:ingest:dlq"
 CHUNK_TOKENS = 512
 CHUNK_OVERLAP = 64
-EMBED_BATCH_SIZE = 96  # Cohere hard limit
+EMBED_BATCH_SIZE = 96
 EXPECTED_DIMS = 1024
 
 _enc = tiktoken.get_encoding("cl100k_base")
@@ -68,46 +63,35 @@ def chunk_text(text: str) -> list[str]:
     return chunks
 
 
-# ── Bedrock Cohere Embed ──────────────────────────────────────────────────────
-_BEDROCK_BASE = f"https://bedrock-runtime.{AWS_REGION}.amazonaws.com"
-
+# ── BGE-M3 via self-hosted text-embeddings-inference ─────────────────────────
 
 async def embed_texts(texts: list[str], input_type: str = "search_document") -> tuple[list[list[float]], int]:
-    """Batch-embed texts via Cohere Embed v4 on Bedrock. Returns (embeddings, total_input_tokens)."""
+    """Embed via self-hosted text-embeddings-inference / BGE-M3.
+
+    `input_type` is accepted for API compatibility but unused — BGE-M3 doesn't distinguish
+    query vs document at inference time (bi-encoder, single-tower). Token counts are computed
+    locally via tiktoken rather than relying on a server response field.
+    """
     all_embeddings: list[list[float]] = []
     total_tokens = 0
-
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=60.0) as client:
         for i in range(0, len(texts), EMBED_BATCH_SIZE):
             batch = texts[i : i + EMBED_BATCH_SIZE]
             resp = await client.post(
-                f"{_BEDROCK_BASE}/model/{EMBED_MODEL_ID}/invoke",
-                headers={
-                    "Authorization": f"Bearer {AWS_BEARER_TOKEN}",
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                },
-                json={
-                    "texts": batch,
-                    "input_type": input_type,
-                    "truncate": "END",
-                    "embedding_types": ["float"],
-                    "output_dimension": 1024,
-                },
+                f"{EMBEDDINGS_URL}/embed",
+                json={"inputs": batch, "normalize": True, "truncate": True},
             )
             if resp.status_code != 200:
-                raise RuntimeError(f"Bedrock embed {resp.status_code}: {resp.text[:400]}")
-            body = resp.json()
-            batch_embeddings = body["embeddings"]["float"]
+                raise RuntimeError(f"embeddings-service {resp.status_code}: {resp.text[:400]}")
+            batch_embeddings = resp.json()  # list[list[float]]
             all_embeddings.extend(batch_embeddings)
-            total_tokens += body.get("input_token_count", 0)
-
+            for t in batch:
+                total_tokens += len(_enc.encode(t))
     if all_embeddings and len(all_embeddings[0]) != EXPECTED_DIMS:
         raise RuntimeError(
             f"Unexpected embedding dims: got {len(all_embeddings[0])}, expected {EXPECTED_DIMS}. "
-            "Check EMBED_MODEL_ID and schema VECTOR() size."
+            f"Check that BGE-M3 is the active model on embeddings-service."
         )
-
     return all_embeddings, total_tokens
 
 
@@ -119,11 +103,11 @@ async def write_cost_event(company_id: str, agent_id: str, input_tokens: int) ->
         INSERT INTO cost_events
           (company_id, agent_id, provider, model,
            input_tokens, output_tokens, cost_cents, occurred_at, biller, billing_type)
-        VALUES ($1::uuid, $2::uuid, 'bedrock', $3, $4, 0, $5, NOW(), 'system', 'embedding')
+        VALUES ($1::uuid, $2::uuid, 'self-hosted', $3, $4, 0, $5, NOW(), 'system', 'embedding')
         """,
         company_id,
         agent_id,
-        EMBED_MODEL_ID,
+        _EMBED_MODEL_NAME,
         input_tokens,
         cost_cents,
     )
@@ -191,17 +175,15 @@ async def ingest(event: dict) -> str | None:
     try:
         if _lf:
             lf_gen = _lf.start_observation(
-                name="bedrock_embed_cohere",
+                name="embed_bge_m3",
                 as_type="generation",
-                model=EMBED_MODEL_ID,
+                model=_EMBED_MODEL_NAME,
                 input={"chunk_count": len(chunks)},
                 metadata={"doc_id": str(doc_id), "company_id": company_id},
             )
     except Exception as exc:
         log.warning("langfuse_init_failed", error=str(exc))
 
-    # Count tokens before embedding — tiktoken is deterministic and avoids
-    # relying on Bedrock's Cohere response which omits input_token_count.
     chunk_tokens = [len(_enc.encode(c)) for c in chunks]
     total_tokens = sum(chunk_tokens)
 
@@ -306,7 +288,7 @@ async def lifespan(app: FastAPI):
     )
 
     worker_task = asyncio.create_task(_worker_loop())
-    log.info("startup_complete", embed_model=EMBED_MODEL_ID, queue=QUEUE_KEY)
+    log.info("startup_complete", embed_model=_EMBED_MODEL_NAME, embeddings_url=EMBEDDINGS_URL, queue=QUEUE_KEY)
 
     yield
 
