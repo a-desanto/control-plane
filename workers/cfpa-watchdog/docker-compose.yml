@@ -1,7 +1,7 @@
 services:
   cfpa-watchdog:
     build:
-      context: .
+      context: workers/cfpa-watchdog
     image: cfpa-watchdog:latest
     container_name: cfpa-watchdog
     restart: unless-stopped

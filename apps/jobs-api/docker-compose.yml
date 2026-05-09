@@ -1,7 +1,7 @@
 services:
   jobs-api:
     build:
-      context: .
+      context: apps/jobs-api
     image: jobs-api:latest
     container_name: jobs-api
     restart: unless-stopped

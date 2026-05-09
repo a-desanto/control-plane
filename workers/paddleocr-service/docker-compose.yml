@@ -1,7 +1,7 @@
 services:
   paddleocr-service:
     build:
-      context: .
+      context: workers/paddleocr-service
     image: paddleocr-service:latest
     container_name: paddleocr-service
     restart: always
