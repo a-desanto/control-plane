@@ -453,11 +453,39 @@ ORCHESTRATOR_STEPS: list[tuple[str, Callable[[asyncpg.Connection, str, dict], Aw
 
 
 async def run_orchestrator(client_uuid: str, inputs: dict, start_from: str | None = None) -> None:
-    """Sequential step runner. Stops on the first awaiting_operator status or the first failure."""
+    """Sequential step runner. Stops on the first awaiting_operator status or the first failure.
+
+    The first two steps (validate + insert_client_config) run without event emission because
+    client_onboarding_events has a FK on client_configs.company_id — that row doesn't exist yet.
+    We bootstrap the row first, then emit events for all subsequent steps.
+    """
     conn = await asyncpg.connect(DB_URL)
     try:
+        # Bootstrap phase: run validate + insert_client_config before the event loop.
+        # Emit a single "validate.started/completed" pair only AFTER insert_client_config
+        # has created the FK-target row. On retry (start_from is set), skip bootstrap.
+        if start_from is None:
+            try:
+                validate_payload = await step_validate(conn, client_uuid, inputs)
+            except Exception as e:
+                # No row exists yet — log to operator_audit_log instead of events table
+                await conn.execute(
+                    "INSERT INTO operator_audit_log (operator_email, action, details) "
+                    "VALUES ($1, 'wizard.validate_failed', $2::jsonb)",
+                    os.environ.get("OPERATOR_EMAIL", "operator"),
+                    json.dumps({"client_uuid": client_uuid, "error": str(e)}),
+                )
+                return
+            config_payload = await step_insert_client_config(conn, client_uuid, inputs)
+            # Row now exists — safe to emit both bootstrap steps as completed
+            await _emit(conn, client_uuid, "validate", "completed", "Validate inputs", validate_payload)
+            await _emit(conn, client_uuid, "insert_client_config", "completed",
+                        "Create company + client_config", config_payload)
+
         skip = start_from is not None
         for key, fn, label in ORCHESTRATOR_STEPS:
+            if key in ("validate", "insert_client_config"):
+                continue  # already handled above
             if skip:
                 if key == start_from:
                     skip = False
