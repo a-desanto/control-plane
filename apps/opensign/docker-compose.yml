@@ -31,8 +31,11 @@ services:
       - opensign-internal
     labels:
       traefik.enable: "true"
+      # Strip /api prefix so parse-server (mounted at /app) sees /app/...
+      traefik.http.middlewares.opensign-strip-api.stripprefix.prefixes: "/api"
       traefik.http.routers.https-0-opensign-api.entryPoints: "https"
       traefik.http.routers.https-0-opensign-api.rule: "Host(`sign.cfpa.sekuirtek.com`) && PathPrefix(`/api`)"
+      traefik.http.routers.https-0-opensign-api.middlewares: "opensign-strip-api"
       traefik.http.routers.https-0-opensign-api.service: "https-0-opensign-api"
       traefik.http.routers.https-0-opensign-api.tls: "true"
       traefik.http.routers.https-0-opensign-api.tls.certresolver: "letsencrypt"
