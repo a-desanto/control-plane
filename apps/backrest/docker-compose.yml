@@ -1,0 +1,40 @@
+services:
+  backrest:
+    image: garethgeorge/backrest:latest
+    container_name: backrest
+    restart: unless-stopped
+    expose:
+      - "9898"
+    volumes:
+      - /home/admin/.cfpa-deploy/backrest/config:/config
+      - /home/admin/.cfpa-deploy/backrest/data:/data
+      - /home/admin/.cfpa-deploy/backrest/cache:/cache
+      - /data/coolify:/userdata/data/coolify:ro
+      - /etc:/userdata/etc:ro
+      - /var/log:/var/log
+    environment:
+      - BACKREST_DATA=/data
+      - BACKREST_CONFIG=/config/config.json
+      - XDG_CACHE_HOME=/cache
+      - TZ=UTC
+    networks:
+      - coolify
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.http-0-backrest.entryPoints: "http"
+      traefik.http.routers.http-0-backrest.middlewares: "redirect-to-https"
+      traefik.http.routers.http-0-backrest.rule: "Host(`backups.cfpa.sekuirtek.com`) && PathPrefix(`/`)"
+      traefik.http.routers.http-0-backrest.service: "http-0-backrest"
+      traefik.http.routers.https-0-backrest.entryPoints: "https"
+      traefik.http.routers.https-0-backrest.middlewares: "gzip"
+      traefik.http.routers.https-0-backrest.rule: "Host(`backups.cfpa.sekuirtek.com`) && PathPrefix(`/`)"
+      traefik.http.routers.https-0-backrest.service: "https-0-backrest"
+      traefik.http.routers.https-0-backrest.tls: "true"
+      traefik.http.routers.https-0-backrest.tls.certresolver: "letsencrypt"
+      traefik.http.services.http-0-backrest.loadbalancer.server.port: "9898"
+      traefik.http.services.https-0-backrest.loadbalancer.server.port: "9898"
+
+networks:
+  coolify:
+    external: true
+    name: coolify

@@ -1,0 +1,73 @@
+services:
+  infisical-backend:
+    image: infisical/infisical:latest
+    container_name: infisical-backend
+    restart: unless-stopped
+    environment:
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - AUTH_SECRET=${AUTH_SECRET}
+      - DB_CONNECTION_URI=postgresql://infisical:${DB_PASSWORD}@infisical-db:5432/infisical
+      - REDIS_URL=redis://default:${REDIS_PASSWORD}@infisical-redis:6379
+      - SITE_URL=${SITE_URL:-https://secrets.cfpa.sekuirtek.com}
+      - TELEMETRY_ENABLED=false
+    depends_on:
+      - infisical-db
+      - infisical-redis
+    expose:
+      - "8080"
+    networks:
+      - coolify
+      - infisical-internal
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.http-0-infisical.entryPoints: "http"
+      traefik.http.routers.http-0-infisical.middlewares: "redirect-to-https"
+      traefik.http.routers.http-0-infisical.rule: "Host(`secrets.cfpa.sekuirtek.com`) && PathPrefix(`/`)"
+      traefik.http.routers.http-0-infisical.service: "http-0-infisical"
+      traefik.http.routers.https-0-infisical.entryPoints: "https"
+      traefik.http.routers.https-0-infisical.middlewares: "gzip"
+      traefik.http.routers.https-0-infisical.rule: "Host(`secrets.cfpa.sekuirtek.com`) && PathPrefix(`/`)"
+      traefik.http.routers.https-0-infisical.service: "https-0-infisical"
+      traefik.http.routers.https-0-infisical.tls: "true"
+      traefik.http.routers.https-0-infisical.tls.certresolver: "letsencrypt"
+      traefik.http.services.http-0-infisical.loadbalancer.server.port: "8080"
+      traefik.http.services.https-0-infisical.loadbalancer.server.port: "8080"
+
+  infisical-db:
+    image: postgres:17
+    container_name: infisical-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=infisical
+      - POSTGRES_USER=infisical
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - /data/cfpa-volumes/infisical/postgres:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    networks:
+      - infisical-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U infisical"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  infisical-redis:
+    image: redis:7-alpine
+    container_name: infisical-redis
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
+    volumes:
+      - /data/cfpa-volumes/infisical/redis:/data
+    expose:
+      - "6379"
+    networks:
+      - infisical-internal
+
+networks:
+  coolify:
+    external: true
+    name: coolify
+  infisical-internal:
+    driver: bridge

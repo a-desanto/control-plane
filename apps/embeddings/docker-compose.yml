@@ -1,0 +1,28 @@
+services:
+  embeddings:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.7
+    container_name: embeddings
+    restart: unless-stopped
+    command: >
+      --model-id intfloat/multilingual-e5-large
+      --port 8080
+      --max-batch-tokens 8192
+      --max-client-batch-size 32
+    volumes:
+      - /data/cfpa-volumes/embeddings/hf-cache:/data
+    environment:
+      - HUGGINGFACE_HUB_CACHE=/data
+      - PORT=80
+      - MKL_ENABLE_INSTRUCTIONS=AVX512_E4
+      - RAYON_NUM_THREADS=8
+    networks:
+      coolify:
+        aliases:
+          - embeddings
+    # Internal only — no Traefik labels.
+    # Reachable at http://embeddings:8080 from the coolify network.
+
+networks:
+  coolify:
+    external: true
+    name: coolify

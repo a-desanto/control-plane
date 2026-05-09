@@ -1,0 +1,20 @@
+services:
+  jobs-api:
+    build:
+      context: .
+    image: jobs-api:latest
+    container_name: jobs-api
+    restart: unless-stopped
+    networks:
+      - coolify
+    environment:
+      # REDIS_URL was previously redis://redis-xh5i0qm22u8hx98nbad90sl1:6379
+      # That container is gone — set this to a live Redis on the coolify network.
+      - REDIS_URL=${REDIS_URL}
+      - USERS_API_URL=${USERS_API_URL:-http://users-api}
+    # No ports — pure queue worker. Posts jobs to n8n webhook.
+
+networks:
+  coolify:
+    external: true
+    name: coolify

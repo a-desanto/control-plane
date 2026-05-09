@@ -1,0 +1,28 @@
+services:
+  cfpa-watchdog:
+    build:
+      context: .
+    image: cfpa-watchdog:latest
+    container_name: cfpa-watchdog
+    restart: unless-stopped
+    networks:
+      - coolify
+    environment:
+      - PAPERCLIP_API_URL=${PAPERCLIP_API_URL}
+      - PAPERCLIP_API_KEY=${PAPERCLIP_API_KEY}
+      - PAPERCLIP_COMPANY_ID=${PAPERCLIP_COMPANY_ID}
+      - LANGFUSE_HOST=${LANGFUSE_HOST}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+      - HEALTHCHECK_PING_URL=${HEALTHCHECK_PING_URL}
+      - WATCHDOG_AGENT_513f5d7f-aba3-43fe-9d97-25a22fb3cc2e_PER_HOUR_MAX_USD=${WATCHDOG_AGENT_513f5d7f-aba3-43fe-9d97-25a22fb3cc2e_PER_HOUR_MAX_USD}
+      - WATCHDOG_AGENT_e3e191c3-b7d4-4d2d-bfe4-2709db3b76a2_PER_HOUR_MAX_USD=${WATCHDOG_AGENT_e3e191c3-b7d4-4d2d-bfe4-2709db3b76a2_PER_HOUR_MAX_USD}
+      - WATCHDOG_AGENT_b512de5c-ea5a-4146-8aaa-750bba2846c7_PER_HOUR_MAX_USD=${WATCHDOG_AGENT_b512de5c-ea5a-4146-8aaa-750bba2846c7_PER_HOUR_MAX_USD}
+      - WATCHDOG_AGENT_535d320c-8eef-4f2c-a3b9-9d94c2f99793_PER_HOUR_MAX_USD=${WATCHDOG_AGENT_535d320c-8eef-4f2c-a3b9-9d94c2f99793_PER_HOUR_MAX_USD}
+    # No ports — pure background poller
+
+networks:
+  coolify:
+    external: true
+    name: coolify
