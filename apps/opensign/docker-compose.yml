@@ -19,6 +19,7 @@ services:
       SMTP_HOST: ${SMTP_HOST:-email-smtp.us-east-2.amazonaws.com}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER_EMAIL: ${SMTP_USER_EMAIL:-noreply@cfpa.sekuirtek.com}
+      SMTP_USERNAME: ${SMTP_USERNAME}
       SMTP_PASS: ${SMTP_PASS}
     volumes:
       - /data/cfpa-volumes/opensign/files:/usr/src/app/files
