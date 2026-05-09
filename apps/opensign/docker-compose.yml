@@ -33,6 +33,7 @@ services:
     labels:
       traefik.enable: "true"
       # Strip /api prefix so parse-server (mounted at /app) sees /app/...
+      traefik.docker.network: "coolify"
       traefik.http.middlewares.opensign-strip-api.stripprefix.prefixes: "/api"
       traefik.http.routers.https-0-opensign-api.entryPoints: "https"
       traefik.http.routers.https-0-opensign-api.rule: "Host(`sign.cfpa.sekuirtek.com`) && PathPrefix(`/api`)"
@@ -60,6 +61,7 @@ services:
       - opensign-internal
     labels:
       traefik.enable: "true"
+      traefik.docker.network: "coolify"
       traefik.http.middlewares.redirect-to-https.redirectscheme.scheme: "https"
       traefik.http.routers.http-0-opensign-client.entryPoints: "http"
       traefik.http.routers.http-0-opensign-client.middlewares: "redirect-to-https"
