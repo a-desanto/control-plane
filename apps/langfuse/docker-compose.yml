@@ -52,6 +52,7 @@ services:
     depends_on: *langfuse-depends-on
     labels:
       traefik.enable: "true"
+      traefik.docker.network: "coolify"
       traefik.http.routers.http-0-langfuse-web.entryPoints: "http"
       traefik.http.routers.http-0-langfuse-web.middlewares: "redirect-to-https"
       traefik.http.routers.http-0-langfuse-web.rule: "Host(`langfuse.cfpa.sekuirtek.com`) && PathPrefix(`/`)"

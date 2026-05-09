@@ -20,6 +20,7 @@ services:
       - infisical-internal
     labels:
       traefik.enable: "true"
+      traefik.docker.network: "coolify"
       traefik.http.routers.http-0-infisical.entryPoints: "http"
       traefik.http.routers.http-0-infisical.middlewares: "redirect-to-https"
       traefik.http.routers.http-0-infisical.rule: "Host(`secrets.cfpa.sekuirtek.com`) && PathPrefix(`/`)"
