@@ -59,14 +59,12 @@ services:
       - opensign-internal
     labels:
       traefik.enable: "true"
-      traefik.http.middlewares.gzip.compress: "true"
       traefik.http.middlewares.redirect-to-https.redirectscheme.scheme: "https"
       traefik.http.routers.http-0-opensign-client.entryPoints: "http"
       traefik.http.routers.http-0-opensign-client.middlewares: "redirect-to-https"
       traefik.http.routers.http-0-opensign-client.rule: "Host(`sign.cfpa.sekuirtek.com`) && PathPrefix(`/`)"
       traefik.http.routers.http-0-opensign-client.service: "http-0-opensign-client"
       traefik.http.routers.https-0-opensign-client.entryPoints: "https"
-      traefik.http.routers.https-0-opensign-client.middlewares: "gzip"
       traefik.http.routers.https-0-opensign-client.rule: "Host(`sign.cfpa.sekuirtek.com`) && PathPrefix(`/`)"
       traefik.http.routers.https-0-opensign-client.service: "https-0-opensign-client"
       traefik.http.routers.https-0-opensign-client.tls: "true"
