@@ -21,7 +21,7 @@ DEFAULT_PER_HOUR_MAX_USD   = float(os.environ.get("PER_HOUR_MAX_USD",   "8.00"))
 # Pattern: WATCHDOG_AGENT_<UUID>_PER_HOUR_MAX_USD=20
 # Supported suffixes: PER_MINUTE_MAX_USD, PER_5MIN_MAX_USD, PER_HOUR_MAX_USD
 _UUID_RE = re.compile(
-    r"^WATCHDOG_AGENT_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
+    r"^WATCHDOG_AGENT_([0-9a-f]{8}[_-][0-9a-f]{4}[_-][0-9a-f]{4}[_-][0-9a-f]{4}[_-][0-9a-f]{12})"
     r"_(PER_MINUTE_MAX_USD|PER_5MIN_MAX_USD|PER_HOUR_MAX_USD)$",
     re.IGNORECASE,
 )
@@ -31,7 +31,7 @@ def _load_agent_overrides() -> dict[str, dict[str, float]]:
     for key, val in os.environ.items():
         m = _UUID_RE.match(key)
         if m:
-            agent_id = m.group(1).lower()
+            agent_id = m.group(1).lower().replace('_', '-')
             threshold = m.group(2).upper()
             overrides.setdefault(agent_id, {})[threshold] = float(val)
     return overrides
