@@ -1,0 +1,39 @@
+services:
+  stirling-pdf:
+    image: docker.stirlingpdf.com/stirlingtools/stirling-pdf:latest
+    container_name: stirling-pdf
+    restart: unless-stopped
+    environment:
+      DOCKER_ENABLE_SECURITY: "true"
+      SECURITY_ENABLELOGIN: "true"
+      SECURITY_INITIALLOGIN_USERNAME: ${STIRLING_USER:-admin}
+      SECURITY_INITIALLOGIN_PASSWORD: ${STIRLING_PASS}
+      LANGS: en_GB
+    volumes:
+      - /data/cfpa-volumes/stirling-pdf/tessdata:/usr/share/tessdata
+      - /data/cfpa-volumes/stirling-pdf/configs:/configs
+      - /data/cfpa-volumes/stirling-pdf/logs:/logs
+    expose:
+      - "8080"
+    networks:
+      - coolify
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "coolify"
+      traefik.http.routers.http-0-stirling-pdf.entryPoints: "http"
+      traefik.http.routers.http-0-stirling-pdf.middlewares: "redirect-to-https"
+      traefik.http.routers.http-0-stirling-pdf.rule: "Host(`pdf.cfpa.sekuirtek.com`) && PathPrefix(`/`)"
+      traefik.http.routers.http-0-stirling-pdf.service: "http-0-stirling-pdf"
+      traefik.http.routers.https-0-stirling-pdf.entryPoints: "https"
+      traefik.http.routers.https-0-stirling-pdf.middlewares: "gzip"
+      traefik.http.routers.https-0-stirling-pdf.rule: "Host(`pdf.cfpa.sekuirtek.com`) && PathPrefix(`/`)"
+      traefik.http.routers.https-0-stirling-pdf.service: "https-0-stirling-pdf"
+      traefik.http.routers.https-0-stirling-pdf.tls: "true"
+      traefik.http.routers.https-0-stirling-pdf.tls.certresolver: "letsencrypt"
+      traefik.http.services.http-0-stirling-pdf.loadbalancer.server.port: "8080"
+      traefik.http.services.https-0-stirling-pdf.loadbalancer.server.port: "8080"
+
+networks:
+  coolify:
+    external: true
+    name: coolify

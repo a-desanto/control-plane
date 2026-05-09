@@ -1,0 +1,71 @@
+services:
+  formbricks:
+    image: ghcr.io/formbricks/formbricks:latest
+    container_name: formbricks
+    restart: unless-stopped
+    environment:
+      WEBAPP_URL: https://forms.cfpa.sekuirtek.com
+      DATABASE_URL: postgresql://formbricks:${FORMBRICKS_DB_PASSWORD}@formbricks-db:5432/formbricks
+      NEXTAUTH_SECRET: ${FORMBRICKS_NEXTAUTH_SECRET}
+      NEXTAUTH_URL: https://forms.cfpa.sekuirtek.com
+      ENCRYPTION_KEY: ${FORMBRICKS_ENCRYPTION_KEY}
+      CRON_SECRET: ${FORMBRICKS_CRON_SECRET}
+      MAIL_FROM: ${MAIL_FROM}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASS}
+      SMTP_SECURE_ENABLED: "1"
+      SIGNUP_DISABLED: "1"
+    volumes:
+      - /data/cfpa-volumes/formbricks/uploads:/home/nextjs/apps/web/uploads
+    depends_on:
+      formbricks-db:
+        condition: service_healthy
+    expose:
+      - "3000"
+    networks:
+      - coolify
+      - formbricks-internal
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "coolify"
+      traefik.http.routers.http-0-formbricks.entryPoints: "http"
+      traefik.http.routers.http-0-formbricks.middlewares: "redirect-to-https"
+      traefik.http.routers.http-0-formbricks.rule: "Host(`forms.cfpa.sekuirtek.com`) && PathPrefix(`/`)"
+      traefik.http.routers.http-0-formbricks.service: "http-0-formbricks"
+      traefik.http.routers.https-0-formbricks.entryPoints: "https"
+      traefik.http.routers.https-0-formbricks.middlewares: "gzip"
+      traefik.http.routers.https-0-formbricks.rule: "Host(`forms.cfpa.sekuirtek.com`) && PathPrefix(`/`)"
+      traefik.http.routers.https-0-formbricks.service: "https-0-formbricks"
+      traefik.http.routers.https-0-formbricks.tls: "true"
+      traefik.http.routers.https-0-formbricks.tls.certresolver: "letsencrypt"
+      traefik.http.services.http-0-formbricks.loadbalancer.server.port: "3000"
+      traefik.http.services.https-0-formbricks.loadbalancer.server.port: "3000"
+
+  formbricks-db:
+    image: postgres:16
+    container_name: formbricks-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: formbricks
+      POSTGRES_USER: formbricks
+      POSTGRES_PASSWORD: ${FORMBRICKS_DB_PASSWORD}
+    volumes:
+      - /data/cfpa-volumes/formbricks/postgres:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    networks:
+      - formbricks-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U formbricks -d formbricks"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+networks:
+  coolify:
+    external: true
+    name: coolify
+  formbricks-internal:
+    driver: bridge

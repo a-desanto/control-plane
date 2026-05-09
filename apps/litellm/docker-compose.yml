@@ -1,0 +1,69 @@
+services:
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    container_name: litellm
+    restart: unless-stopped
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--detailed_debug"]
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
+      DATABASE_URL: postgresql://litellm:${LITELLM_DB_PASSWORD}@litellm-db:5432/litellm
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      LANGFUSE_HOST: ${LANGFUSE_HOST}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+    volumes:
+      - /data/cfpa-volumes/litellm/config.yaml:/app/config.yaml:ro
+    depends_on:
+      litellm-db:
+        condition: service_healthy
+    expose:
+      - "4000"
+    networks:
+      - coolify
+      - litellm-internal
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "coolify"
+      traefik.http.routers.http-0-litellm.entryPoints: "http"
+      traefik.http.routers.http-0-litellm.middlewares: "redirect-to-https"
+      traefik.http.routers.http-0-litellm.rule: "Host(`llm.cfpa.sekuirtek.com`) && PathPrefix(`/`)"
+      traefik.http.routers.http-0-litellm.service: "http-0-litellm"
+      traefik.http.routers.https-0-litellm.entryPoints: "https"
+      traefik.http.routers.https-0-litellm.middlewares: "gzip"
+      traefik.http.routers.https-0-litellm.rule: "Host(`llm.cfpa.sekuirtek.com`) && PathPrefix(`/`)"
+      traefik.http.routers.https-0-litellm.service: "https-0-litellm"
+      traefik.http.routers.https-0-litellm.tls: "true"
+      traefik.http.routers.https-0-litellm.tls.certresolver: "letsencrypt"
+      traefik.http.services.http-0-litellm.loadbalancer.server.port: "4000"
+      traefik.http.services.https-0-litellm.loadbalancer.server.port: "4000"
+
+  litellm-db:
+    image: postgres:16
+    container_name: litellm-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD}
+    volumes:
+      - /data/cfpa-volumes/litellm/postgres:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    networks:
+      - litellm-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm -d litellm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+networks:
+  coolify:
+    external: true
+    name: coolify
+  litellm-internal:
+    driver: bridge

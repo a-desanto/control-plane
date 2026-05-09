@@ -1,0 +1,35 @@
+services:
+  promptfoo:
+    image: ghcr.io/promptfoo/promptfoo:latest
+    container_name: promptfoo
+    restart: unless-stopped
+    environment:
+      PROMPTFOO_DATABASE_URL: file:/data/promptfoo.db
+      PROMPTFOO_DISABLE_TELEMETRY: "1"
+      NEXT_PUBLIC_PROMPTFOO_BASE_URL: https://eval.cfpa.sekuirtek.com
+    volumes:
+      - /data/cfpa-volumes/promptfoo:/data
+    expose:
+      - "3000"
+    networks:
+      - coolify
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "coolify"
+      traefik.http.routers.http-0-promptfoo.entryPoints: "http"
+      traefik.http.routers.http-0-promptfoo.middlewares: "redirect-to-https"
+      traefik.http.routers.http-0-promptfoo.rule: "Host(`eval.cfpa.sekuirtek.com`) && PathPrefix(`/`)"
+      traefik.http.routers.http-0-promptfoo.service: "http-0-promptfoo"
+      traefik.http.routers.https-0-promptfoo.entryPoints: "https"
+      traefik.http.routers.https-0-promptfoo.middlewares: "gzip"
+      traefik.http.routers.https-0-promptfoo.rule: "Host(`eval.cfpa.sekuirtek.com`) && PathPrefix(`/`)"
+      traefik.http.routers.https-0-promptfoo.service: "https-0-promptfoo"
+      traefik.http.routers.https-0-promptfoo.tls: "true"
+      traefik.http.routers.https-0-promptfoo.tls.certresolver: "letsencrypt"
+      traefik.http.services.http-0-promptfoo.loadbalancer.server.port: "3000"
+      traefik.http.services.https-0-promptfoo.loadbalancer.server.port: "3000"
+
+networks:
+  coolify:
+    external: true
+    name: coolify
