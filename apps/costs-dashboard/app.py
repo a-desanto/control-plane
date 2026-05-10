@@ -350,7 +350,7 @@ async def query_client_board_api_keys(conn: asyncpg.Connection, company_id: str)
             bak.user_id
         FROM board_api_keys bak
         JOIN company_memberships cm
-          ON cm.user_id = bak.user_id
+          ON cm.principal_id = bak.user_id AND cm.principal_type = 'user'
         WHERE cm.company_id = $1::uuid
           AND cm.status = 'active'
           AND bak.revoked_at IS NULL
