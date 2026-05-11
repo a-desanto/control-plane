@@ -15,18 +15,28 @@ services:
       SMTP_PORT: ${SMTP_PORT}
       SMTP_USER: ${SMTP_USERNAME}
       SMTP_PASSWORD: ${SMTP_PASS}
-      SMTP_SECURE_ENABLED: "1"
-      SIGNUP_DISABLED: "1"
+      SMTP_SECURE_ENABLED: "0"
+      SIGNUP_DISABLED: "0"
+      REDIS_URL: redis://formbricks-redis:6379
     volumes:
       - /data/cfpa-volumes/formbricks/uploads:/home/nextjs/apps/web/uploads
     depends_on:
       formbricks-db:
+        condition: service_healthy
+      formbricks-redis:
         condition: service_healthy
     expose:
       - "3000"
     networks:
       - coolify
       - formbricks-internal
+      - formbricks-redis-internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- --tries=1 --timeout=5 http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     labels:
       traefik.enable: "true"
       traefik.docker.network: "coolify"
@@ -43,8 +53,22 @@ services:
       traefik.http.services.http-0-formbricks.loadbalancer.server.port: "3000"
       traefik.http.services.https-0-formbricks.loadbalancer.server.port: "3000"
 
+  formbricks-redis:
+    image: redis:7-alpine
+    container_name: formbricks-redis
+    restart: unless-stopped
+    expose:
+      - "6379"
+    networks:
+      - formbricks-redis-internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   formbricks-db:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     container_name: formbricks-db
     restart: unless-stopped
     environment:
@@ -68,4 +92,6 @@ networks:
     external: true
     name: coolify
   formbricks-internal:
+    driver: bridge
+  formbricks-redis-internal:
     driver: bridge

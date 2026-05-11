@@ -9,16 +9,22 @@ services:
       - "3001"
     networks:
       - coolify
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- --tries=1 --timeout=5 http://localhost:3001/ | grep -q 'Uptime Kuma' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     labels:
       traefik.enable: "true"
       traefik.docker.network: "coolify"
       traefik.http.routers.http-0-uptime-kuma.entryPoints: "http"
       traefik.http.routers.http-0-uptime-kuma.middlewares: "redirect-to-https"
-      traefik.http.routers.http-0-uptime-kuma.rule: "Host(`status.cfpa.sekuirtek.com`) && PathPrefix(`/`)"
+      traefik.http.routers.http-0-uptime-kuma.rule: "(Host(`status.cfpa.sekuirtek.com`) || Host(`status.cfpa.caringfirstpa.com`)) && PathPrefix(`/`)"
       traefik.http.routers.http-0-uptime-kuma.service: "http-0-uptime-kuma"
       traefik.http.routers.https-0-uptime-kuma.entryPoints: "https"
       traefik.http.routers.https-0-uptime-kuma.middlewares: "gzip"
-      traefik.http.routers.https-0-uptime-kuma.rule: "Host(`status.cfpa.sekuirtek.com`) && PathPrefix(`/`)"
+      traefik.http.routers.https-0-uptime-kuma.rule: "(Host(`status.cfpa.sekuirtek.com`) || Host(`status.cfpa.caringfirstpa.com`)) && PathPrefix(`/`)"
       traefik.http.routers.https-0-uptime-kuma.service: "https-0-uptime-kuma"
       traefik.http.routers.https-0-uptime-kuma.tls: "true"
       traefik.http.routers.https-0-uptime-kuma.tls.certresolver: "letsencrypt"
