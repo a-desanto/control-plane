@@ -15,6 +15,12 @@ services:
       - PORT=80
       - MKL_ENABLE_INSTRUCTIONS=AVX512_E4
       - RAYON_NUM_THREADS=8
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+        reservations:
+          memory: 1500M
     networks:
       coolify:
         aliases:
