@@ -7,7 +7,7 @@ services:
       --model-id intfloat/multilingual-e5-large
       --port 8080
       --max-batch-tokens 8192
-      --max-client-batch-size 32
+      --max-client-batch-size 8
     volumes:
       - /data/cfpa-volumes/embeddings/hf-cache:/data
     environment:
@@ -18,9 +18,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 3G
+          memory: 4G
         reservations:
-          memory: 1500M
+          memory: 2G
     networks:
       coolify:
         aliases:
