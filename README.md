@@ -15,3 +15,6 @@ Per-client VPS configuration and worker code for the paperclipai platform. paper
 | [`PHASE14_LANGFUSE_RUNBOOK.md`](PHASE14_LANGFUSE_RUNBOOK.md) | Step-by-step deployment runbook for Phase 14 (Langfuse observability + control VPS) |
 | [`PHASE6_RAG_RUNBOOK.md`](PHASE6_RAG_RUNBOOK.md) | Step-by-step implementation runbook for Phase 6 (RAG/knowledge layer MVP) |
 | [`PIVOT_TO_PAPERCLIP.md`](PIVOT_TO_PAPERCLIP.md) | History: why we decommissioned the custom FastAPI brain |
+| [`PLATFORM_READINESS.md`](PLATFORM_READINESS.md) | End-to-end workflow flow + readiness check — what's working, what's blocking, what's deferred |
+| [`ADD_ON_SERVICES.md`](ADD_ON_SERVICES.md) | Add-on service catalog — base tier + plug-and-play add-ons + vertical bundles + pricing + install mechanics |
+| [`COMPETITIVE_RESEARCH_REPORT.md`](COMPETITIVE_RESEARCH_REPORT.md) | May 2026 competitive landscape research — competitors, pricing, business model critiques |
